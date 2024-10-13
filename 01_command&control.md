@@ -55,4 +55,41 @@ Save payloads to C:\Payloads (Defender has an exception for that directory).
 5. DNS beacons do not automatically send metadata; use ```checkin``` command
 
 ## Pivot Listeners
+
+A PL must be created on an existing beacon, and works in reverse. 
+
+1. Right-click on a Beacon and select Pivoting > Listener
+2. Host and port will be hard-coded into the listener -- leave as-is
+3. Check with ```netstat```, should see e.g:
+
+   ``` TCP    0.0.0.0:4444           0.0.0.0:0              LISTENING       6920```
+
+Can generate payloads for this listener and use commands e.g. ```spawn```, ```elevate```, and ```jump```.
+
 ## Running as a Service
+
+For autostart when machine boots, so you can run CS client right away:
+* ```sudo vim /etc/systemd/system/teamserver.service```
+* Paste:
+  ```
+  [Unit]
+  Description=Cobalt Strike Team Server
+  After=network.target
+  StartLimitIntervalSec=0
+  
+  [Service]
+  Type=simple
+  Restart=always
+  RestartSec=1
+  User=root
+  WorkingDirectory=/home/attacker/cobaltstrike
+  ExecStart=/home/attacker/cobaltstrike/teamserver 10.10.5.50 Passw0rd! c2-profiles/normal/webbug.profile
+  
+  [Install]
+  WantedBy=multi-user.target
+  ```
+* ```sudo systemctl daemon-reload```
+* ```sudo systemctl status teamserver.service``` // will be inactive (dead)
+* ```sudo systemctl start teamserver.service```
+* ```sudo systemctl status teamserver.service``` // will be active (running)
+* ```sudo systemctl enable teamserver.service```
