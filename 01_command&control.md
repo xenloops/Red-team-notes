@@ -32,6 +32,20 @@ Create all listeners:
 | tcp-loc | windows/beacon_bind_tcp | | 4444 | 127.0.0.1 | |
 
 ## Generating Payloads
+
+Use Payloads menu to generate different kinds of payloads:
+| | | |
+|--|--|--|
+| HTML App | .hta file delivered through browser via social engineering | x86, only for egress listeners |
+| MS Office Macro | VBA that can be dropped into a macro-enabled MS Word or Excel file | x86/x64, only for egress listeners |
+| Stager Payload Generator | Payload stager in C, C#, PowerShell, Python, VBA, etc.; for custom payloads/exploits | x86/x64, only for egress listeners |
+| Stageless Payload Generator | Stageless payloads rather than stagers. Can specify an exit function (process/thread) | Also for P2P listeners |
+| Windows Stager Payload | Pre-compiled stager as an EXE, Service EXE, or DLL. | |
+| Windows Stageless Payload | Pre-compiled stageless payload as an EXE, Service EXE, DLL, shellcode, or PowerShell | P2P listeners |
+| Windows Stageless Generate All Payloads | Every stageless payload variant for every listener | x86/x64 |
+
+Save payloads to C:\Payloads (Defender has an exception for that directory).
+
 ## Interacting with Beacon
 ## Pivot Listeners
 ## Running as a Service
