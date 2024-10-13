@@ -47,5 +47,12 @@ Use Payloads menu to generate different kinds of payloads:
 Save payloads to C:\Payloads (Defender has an exception for that directory).
 
 ## Interacting with Beacon
+
+1. Launch a beacon on the Attacker Desktop
+2. Change beacon's sleep cycle if desired, e.g. ```sleep 5``` (_but watch how noisy it can get -- not a prob in lab network_)
+3. Confirm beacon in Wireshark; filter for http, look for GET request with 200 response (use Follow > HTTP Stream) -- how traffic appears can be customised in the Malleable C2 profile
+4. Check control by using some commands, like ```pwd```, ```dir```, ```whoami```, etc.
+5. DNS beacons do not automatically send metadata; use ```checkin``` command
+
 ## Pivot Listeners
 ## Running as a Service
