@@ -11,9 +11,11 @@ Tools for password spraying against Office 365 and Exchange:
 
 On Attacker Desktop:
   1. Disable Defender's Real-time protection
-  2. Import MailSniper in PowerShell: ```ipmo C:\Tools\MailSniper\MailSniper.ps1```
-  3. ```Invoke-DomainHarvestOWA -ExchHostname mail.cyberbotic.io```  // gives NetBIOS name of domain
-  4. Generate possible usernames from names at [https://www.cyberbotic.io/our-team](https://www.cyberbotic.io/our-team):
+  2. Download [MailSniper](https://github.com/dafthack/MailSniper/blob/master/MailSniper.ps1)
+  3. In an Admin PS, run ```Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine```
+  4. In a standard PS, import MailSniper: ```ipmo C:\Tools\MailSniper\MailSniper.ps1```
+  5. ```Invoke-DomainHarvestOWA -ExchHostname mail.cyberbotic.io```  // gives NetBIOS name of domain
+  6. Generate possible usernames from names at [https://www.cyberbotic.io/our-team](https://www.cyberbotic.io/our-team):
     5. ```cd /mnt/c/Users/Attacker/Desktop/```
     6. ```cat names.txt```:
         * Bob Farmer
