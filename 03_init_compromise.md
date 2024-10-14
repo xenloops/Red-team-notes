@@ -28,6 +28,18 @@ On Attacker Desktop:
   11. ```Invoke-PasswordSprayOWA -ExchHostname mail.cyberbotic.io -UserList valid.txt -Password Summer2022```
 
 
- 
+## Internal Phishing
+With the credentials of a legit internal user, many doors open, e.g.:
+* Emails that may contain sensitive information such as documents, usernames, and passwords
+* Send internal emails on behalf of the user, containing specially crafted files/links, or even download a document already in an inbox, backdoor it (e.g. with a macro) and send it back to somebody
+
+## Initial Access Payloads
+Two options for delivering a payload that will execute on their system:
+
+1. Send a URL from which a payload can download
+2. Attach a payload to the phishing email
+
+Files emailed "internally" from a compromised Exchange mailbox are not tagged with a Zone Identifier, and won't have the "mark of the web" and come under greater scrutiny.
+
 
 
