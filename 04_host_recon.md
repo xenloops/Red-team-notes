@@ -28,16 +28,15 @@ Some prgs scanincoming traffic for known malicious content or block the ingress/
 
 Orgs can use basic auth with a local database, Radius, or AD before access to the proxy. AD integration is common and provides SSO via NTLM, Kerberos and LDAP. This often excludes computer accounts, which means HTTP/S beacons running as local SYSTEM accounts won't work.
 
-## Screenshots
+## Capturing data from client
 
-Take screenshots of the user’s desktop using a beacon command:
-* ```printscreen```: single screenshot via PrintScr
-* ```screenshot```: single screenshot
-* ```screenwatch```: periodic screenshots of desktop
-
-## Keylogger
-
-Capture user keystrokes in the beacon: ```keylogger```. CS: View > Keystrokes to see what's typed. Kill the keylogger using ```jobs``` then ```jobkill <PID>```.
+* Screenshots: Take screenshots of the user’s desktop using a beacon command:
+  * ```printscreen```: single screenshot via PrintScr
+  * ```screenshot```: single screenshot
+  * ```screenwatch```: periodic screenshots of desktop
+* Keylogger: Capture user keystrokes in the beacon: ```keylogger```. CS: View > Keystrokes to see what's typed. Kill the keylogger using ```jobs``` then ```jobkill <PID>```.
+* Clipboard: The beacon ```clipboard``` command grabs only text copied to the user's clipboard.
+* User sessions ...
 
 
 
