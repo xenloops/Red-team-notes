@@ -68,7 +68,8 @@ CS can store tokens stolen for future use. Stealing a token opens a handle to th
 
 ## Make Token
 
+Impersonate a user with their plaintext password. Uses [LogonUserA](https://learn.microsoft.com/en-gb/windows/win32/api/winbase/nf-winbase-logonusera) API. 
 
-
+* ```make_token DEV\jking Qwerty123``` 
 
 
