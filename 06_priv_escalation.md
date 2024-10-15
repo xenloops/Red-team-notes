@@ -66,6 +66,8 @@ PS: ```Get-Acl -Path "C:\Program Files\Vulnerable Services\Service 3.exe" | fl``
 
 ## UAC Bypasses
 
+Want to allow a medium priv process to elevate itself or spawn a new process with high priv, without prompting the user. A beacon has a few built-in UAC bypasses (exposed via the elevate command) with more in the [Elevate Kit](https://github.com/cobalt-strike/ElevateKit):
 
+* ```elevate uac-schtasks tcp-local```
 
 
