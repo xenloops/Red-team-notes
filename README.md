@@ -7,7 +7,7 @@ Notes jotted down while taking the Certified Red Team Ops training.
 * Bidirectional copy/paste between host and lab machines is enabled. Doesn't work using Firefox as of v128.3.1esr (Linux). Ideas:
   * Try another browser
   * Copy, then on Guacamole press Ctrl+Shift+Alt -> Then copy from that box -> Press Ctrl+Shift+Alt again to close that box and paste where you want it to be pasted
-* Snapshots are not available on the lab machines. They won't really help since they only save the hard drive state and not the running state. For better or worse you have to establish your own persistence from a read teamer mindset. A quick script here or event there makes it less of a pain though.
+* Snapshots are not available on the lab machines. They won't really help since they only save the hard drive state and not the running state. The storage state of the lab VMs are preserved when you shut down.  All of your listeners will still be there the next time you power it back up.
 
 
 ## Common tools
