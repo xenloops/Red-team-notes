@@ -36,7 +36,7 @@ Orgs can use basic auth with a local database, Radius, or AD before access to th
   * ```screenwatch```: periodic screenshots of desktop
 * Keylogger: Capture user keystrokes in the beacon: ```keylogger```. CS: View > Keystrokes to see what's typed. Kill the keylogger using ```jobs``` then ```jobkill <PID>```.
 * Clipboard: The beacon ```clipboard``` command grabs only text copied to the user's clipboard.
-* User sessions ...
+* User sessions: ```net logons``` shows logged-in sessions on the target.
 
 
 
