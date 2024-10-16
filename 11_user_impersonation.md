@@ -68,8 +68,24 @@ CS can store tokens stolen for future use. Stealing a token opens a handle to th
 
 ## Make Token
 
-Impersonate a user with their plaintext password. Uses [LogonUserA](https://learn.microsoft.com/en-gb/windows/win32/api/winbase/nf-winbase-logonusera) API. 
+Impersonate a user with their plaintext password. Uses the [LogonUserA API](https://learn.microsoft.com/en-gb/windows/win32/api/winbase/nf-winbase-logonusera), which gives a handle to a token that can be passed to the [ImpersonateLoggedOnUser API](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-impersonateloggedonuser), allowing the calling thread to impersonate the context of token.
 
-* ```make_token DEV\jking Qwerty123``` 
+* ```make_token DEV\jking Qwerty123``` - session created has same local identifier as the caller but the alternate credentials are used when accessing a remote resource
+* ```remote-exec winrm web.dev.cyberbotic.io whoami``` - shows this
+* So ```make_token``` is not applicable to anything run on the current machine. For that, ```spawnas``` may be better. 
+
+These logon events are found in Kibana with the query: ```event.code: 4624 AND winlog.event_data.LogonType: 9``` where 4624 is the "An account was successfully logged on" Event ID and LogonType 9 is LOGON32_LOGON_NEW_CREDENTIALS. But ```runas /netonly``` behaves the same; difficult to distinguish legitimate from malicious events.
+
+## Process injection
+
+Process injection puts arbitrary shellcode into a process that you can obtain a handle to with enough privileges to write into its memory. 
+
+Beacon has two injection commands:
+* ```shinject <target PID> {x64|x32} <listener name>``` injects arbitrary shellcode from a binary file on the attacking machine
+* ```inject``` injects a full Beacon payload for the specified listener
+
+If we wanted to inject a TCP Beacon payload into the MMC process mentioned in the previous module, we could do: ```inject 4464 x64 tcp-local```, which will also attempt to connect to the child if a P2P listener is used. The resulting Beacon runs with the privilege of the user who owns the process.
+
+If the process closes, the beacon will be lost. The injected shellcode uses the Exit Thread function, so it won't kill the process if we exit the beacon.
 
 
