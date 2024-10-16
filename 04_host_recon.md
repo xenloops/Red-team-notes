@@ -18,7 +18,7 @@ Domain names can be categorized into buckets that are routinely blocked by vendo
 
 ## HTTPS Offloading
 
-Some orgs use a proxy to decrypt incoming HTTPS traffic to inspect the plaintext HTTP. Use tools like [Covenant](https://github.com/cobbr/Covenant) for certificate pinning to avoid.
+Some orgs use a proxy to decrypt incoming HTTPS traffic to inspect the plaintext HTTP. Use tools like [Covenant](https://github.com/cobbr/Covenant) for certificate pinning to avoid this.
 
 ## Content Filtering / AV Scanning
 
