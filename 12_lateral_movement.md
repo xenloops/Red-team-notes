@@ -8,11 +8,9 @@ Moving between hosts in a domain helps access sensitive information and obtain n
 
     Exploit                   Arch  Description
     -------                   ----  -----------
-    psexec                    x86   Use a service to run a Service EXE artifact
-    psexec64                  x64   Use a service to run a Service EXE artifact
+    psexec/psexec64         x86/x64 Use a service to run a Service EXE artifact
     psexec_psh                x86   Use a service to run a PowerShell one-liner
-    winrm                     x86   Run a PowerShell script via WinRM
-    winrm64                   x64   Run a PowerShell script via WinRM
+    winrm/winrm64           x86/x64 Run a PowerShell script via WinRM
 
 ### remote-exec
 
