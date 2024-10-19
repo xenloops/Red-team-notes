@@ -25,7 +25,7 @@ CS: Listener Management > create a new Foreign HTTP listener.  Enter the stager 
 
 ## Spawn & Inject
 
-shinject (existing proc) and shspawn (new proc) allow injection of arbitrary shellcode blobs. 
+```shinject <arch> <payload>``` (existing proc) and ```shspawn <arch> <payload>``` (new proc) allow injection of arbitrary shellcode blobs. 
 
 1: Change the multi handler to use a stageless x64 Meterpreter payload:
 
