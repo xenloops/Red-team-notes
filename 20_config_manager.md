@@ -14,4 +14,47 @@ First understand the deployment topology, which devices are being managed, and w
     [*] You are DEV\bfarmer
     beacon> execute-assembly C:\Tools\SharpSCCM\bin\Release\SharpSCCM.exe local site-info --no-banner
 
+This enumeration uses WMI under the hood, done manually is:
+
+    beacon> powershell Get-WmiObject -Class SMS_Authority -Namespace root\CCM | select Name, CurrentManagementPoint | fl
+
+Can also check the DACL on the CN=System Management container in AD for machines that have Full Control over it (as this a pre-requisite of SCCM setup in a domain):
+
+    beacon> execute-assembly SharpSCCM.exe get site-info -d cyberbotic.io --no-banner
+
+Enumerating users, groups, computers, collections, and administrators, etc, cannot be done as a standard domain user. SCCM employs RBAC. A description of each role [can be found here](https://learn.microsoft.com/en-us/mem/configmgr/core/understand/fundamentals-of-role-based-administration). The scope of these roles can be restricted to individual collections as needed by admin. For example, computers from the DEV and CYBER domains can be grouped into their own collections. This can really impact an attacker's view of how SCCM is configured. If we enumerate all the collections as one user, we can see that both DEV and CYBER exist as well as their member counts.
+
+    beacon> getuid
+    [*] You are DEV\bfarmer
+    beacon> execute-assembly SharpSCCM.exe get collections --no-banner
+    MemberCount: 4
+
+However, if we run the same enumeration as jking, a member of DEV\Support Engineers, we only see the DEV collection:
+
+    beacon> make_token DEV\jking Qwerty123
+    [+] Impersonated DEV\jking (netonly)
+    beacon> execute-assembly SharpSCCM.exe get collections --no-banner
+    MemberCount: 6
+
+because though DEV\Developers are only "Read-Only Analysts", the role is scoped to both collections. DEV\Support Engineers are "Full Administrators" over the DEV collection but they have no roles that are scoped to the CYBER collection. When enumerating SCCM, you may only see a portion based on the user you're running the enumeration as.
+
+Administrative users can be found using get class-instances SMS_Admin; this shows what is reflected in the Configuration Manger GUI.
+
+    beacon> execute-assembly SharpSCCM.exe get class-instances SMS_Admin --no-banner
+
+Members of these collections can be found using get collection-members -n <collection-name>:
+
+    beacon> execute-assembly SharpSCCM.exe get collection-members -n DEV --no-banner
+
+More information on each device can be obtained using get devices. There are some good ways to filter the output, such as searching by device name, -n, and only displaying the properties specified by -p.
+
+    beacon> execute-assembly SharpSCCM.exe get devices -n WKSTN -p Name -p FullDomainName -p IPAddresses -p LastLogonUserName -p OperatingSystemNameandVersion --no-banner
+
+Use SCCM as a form of user hunting, since it records the last user to login to each managed computer. The -u parameter will only return devices where the given user was the last to login:
+
+    beacon> execute-assembly SharpSCCM.exe get devices -u nlamb -p IPAddresses -p IPSubnets -p Name --no-banner
+
+These results are updated in SCCM every 7 days by default.
+
+
 
