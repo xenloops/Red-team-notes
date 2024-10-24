@@ -56,5 +56,20 @@ Use SCCM as a form of user hunting, since it records the last user to login to e
 
 These results are updated in SCCM every 7 days by default.
 
+## Network Access Account Credentials
 
+In a Windows environment, most computers are domain-joined and authenticate to SCCM Software Distribution Points (SDPs) (SMB shares) using their credentials. Network Access Account credentials (NAAs) are domain credentials used by computers not domain-joined. They are passed to the machines as part of the SCCM machine policies, which are encrypted using DPAPI and stored locally. If present, privileged users can retrieve these credential blobs via WMI or directly from disk and decrypt them to recover plaintext credentials. Use local naa with -m wmi or -m disk:
 
+    beacon> getuid
+    [*] You are DEV\bfarmer (admin)
+    beacon> execute-assembly SharpSCCM.exe local naa -m wmi --no-banner
+
+These credentials should only have read access to the SDP, but are often times over privileged (sometimes even domain/enterprise admins).
+
+    beacon> make_token cyberbotic.io\sccm_svc Cyberb0tic
+    [+] Impersonated cyberbotic.io\sccm_svc (netonly)
+    beacon> ls \\dc-1.cyberbotic.io\c$
+   
+Or request a copy of the policy directly from SCCM using ```get naa``` (requires LA to obtain a copy of its SMS Signing and SMS Encryption certs).
+
+## 
