@@ -75,7 +75,55 @@ Review the README.md file inside the Artifact Kit directory for more information
     ...
     [Artifact kit] [+] The artifacts for the bypass technique 'pipe' are saved in '/mnt/c/Tools/cobaltstrike/artifacts/pipe'
 
+Each artifact flavor is compiled to /mnt/c/Tools/cobaltstrike/artifacts/pipe/, along with an aggressor script, artifact.cna.
 
+Before loading these into CS, analyse them with a tool like ThreatCheck. This will split the file scan them with Defender to reveal any parts that trip static signatures.
 
+    PS C:\Users\Attacker> C:\Tools\ThreatCheck\ThreatCheck\bin\Debug\ThreatCheck.exe -f C:\Tools\cobaltstrike\artifacts\pipe\artifact64svcbig.exe
 
+#### Disable real-time protection before running ThreatCheck against binary artifacts.
 
+The stageless service binary artifact in the lab has something that Defender doesn't like. IDA or Ghidra can dissect the file to see what. Launch Ghidra by running the start script at C:\Tools\ghidra-10.3.1\ghidraRun.bat. 
+
+1. Create a new non-shared project, then import the artifact by going to File > Import File.
+2. Open it in the CodeBrowser.
+3. When prompted, analyze the binary (the default selected analyzers are fine).
+4. Find the portion of code reported by ThreatCheck.
+    * Search for a specific byte sequence output by ThreatCheck, for example C1 83 E1 07 8A 0C 0A 41 30 0C 01 48 FF C0 EB E9. Go to Search > Memory.
+    * Or use the "bad bytes offset" given by ThreatCheck. Select Navigation > Go To and enter file(n) where n is the offset. In this case it would be file(0xBEC).
+5. The portion of highlighted code is a for loop. Go to the Artifact Kit source code and search for any such loops.
+6. Dismiss most of these files because we didn't use the readfile bypass nor did we enable syscalls. The candidates in patch.c seem the most promising. Because this is a service binary payload, we know that it will perform a "migration" (i.e. spawns a new process and injects Beacon shellcode into it before exiting). This spawn function under an #ifdef _MIGRATE_ directive is a dead ringer for the decompiled version in Ghidra.
+7. To break the detection, modify the routine to compile to a different byte sequence:
+
+        for (x = 0; x < length; x++) {
+            char* ptr = (char *)buffer + x;
+        
+            /* do something random */
+            GetTickCount();
+        
+            *ptr = *ptr ^ key[x % 8];
+        }
+
+Rebuild the kit and scan the new version of the artifact, which has a different signature. This is an iterative process, so repeat these steps until all the detections are gone.
+
+Another one seems related to the sprintf call used to create the pseudo-random pipe name in bypass-pipe.c. Change
+
+    sprintf(pipename, "%c%c%c%c%c%c%c%c%cnetsvc\\%d", 92, 92, 46, 92, 112, 105, 112, 101, 92, (int)(GetTickCount() % 9898));
+
+to something like:
+
+    sprintf(pipename, "%c%c%c%c%c%c%c%c%crasta\\mouse", 92, 92, 46, 92, 112, 105, 112, 101, 92);
+
+In most cases, it doesn't matter the change, as long as it's different (and still functional).
+
+To use new artifacts, load the aggressor script. Go to CS > Script Manager > Load, select the artifact.cna file in the output directory. Any DLL and EXE payloads generated from here on use the new artifacts, so use Payloads > Windows Stageless Generate All Payloads to replace all payloads in C:\Payloads.
+
+Delete the existing payloads first because they sometimes only get partially overwritten with the new ones.
+
+Should now be able to move laterally to the file server using PsExec.
+
+    beacon> jump psexec64 fs.dev.cyberbotic.io smb
+    Started service 96126c2 on fs.dev.cyberbotic.io
+    [+] established link to child beacon: 10.10.122.15
+
+Unload the CNA from the Script Manager to revert to the default payloads.
